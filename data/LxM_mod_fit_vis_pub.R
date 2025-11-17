@@ -1,13 +1,9 @@
-# LxM GLMM fitting
-# script for fitting GLMMs to trial-by-trial choice data from lxm1 and lxm2
+# LxM MIXED MODEL FIT AND VIS ====
 
-# Code contents page:
-# 1 - fit some logistic regressions and diagnostic plots
-# 2 - fit some GLMMs and do model comp
-# 3 - evaluate these GLMMs by comparing fitting across all optimisers
-# 4 - do some visualing of the effects
-# 5 - is it better just to fit lxm2 data?
+# script for fitting GLMMs to trial-by-trial choice data from 'Effort choices are sensitive to prior
+# learning'
 
+# Please excuse the long list of packages for now 
 
 # PACKAGES ====
 
@@ -53,16 +49,14 @@ library(afex)
 
 setwd('/Users/calum/lxmAnalysisPub/data/')
 
-test <- load('lxm3_choice_trialByTrial.csv')
+source('LxM_load_and_preprocess.R')
 
-data <- lxm_load_preprocess(clean = 1, ver = 2, tourn_remove = 1)
+data <- lxm_load_preprocess(clean = 1, tourn_remove = 1)
 
 tbtDf <- data$tbtDf
 summDf <- data$summDf
-plotPath <- data$plotPath
-ver <- data$ver
 
-# QUICK GLM WITH DEMO ====
+# MODEL 0 ====
 ## NOTE use this to identify whether demo variables need to be included in GLMMs
 
 baseGlm <- glm(accepted ~ Age_resc+Gender+SES+ord+outProb+normOutMag+effPrp+valence,
@@ -160,40 +154,6 @@ lxm_glmm_fit <- function(tbtDf, model_formulas) {
 ilmFits <- lxm_glmm_fit(tbtDf = tbtDf, model_formulas = model_formulas1)
 
 mhfits <- lxm_glmm_fit(tbtDf, model_formulas = model_formulas2)
-
-
-
-# SHAPS INTERACTION MODELS ====
-
-intrMod_ptr_SHAPS <- glmer(accepted ~ Age_resc + Gender + normOutMag + effPrp + postTournRat * SHAPS_resc 
-                           + (1 + postTournRat + normOutMag + valence + effPrp | prolificID), 
-                           data = tbtDf, 
-                           family=binomial(link="logit"), 
-                           control=glmerControl(optimizer='bobyqa', optCtrl=list(maxfun=2e5)))
-summary(intrMod_ptr_SHAPS)
-
-intrMod_val_SHAPS <- glmer(accepted ~ Age_resc + Gender + normOutMag + effPrp + postTournRat + valence * SHAPS_resc 
-                           + (1 + postTournRat + normOutMag + valence + effPrp | prolificID), 
-                           data = tbtDf, 
-                           family=binomial(link="logit"), 
-                           control=glmerControl(optimizer='bobyqa', optCtrl=list(maxfun=2e5)))
-summary(intrMod_val_SHAPS)
-
-intrMod_magn_SHAPS <- glmer(accepted ~ Age_resc + Gender + normOutMag + postTournRat + effPrp * SHAPS_resc 
-                           + (1 + postTournRat + normOutMag + valence + effPrp | prolificID), 
-                           data = tbtDf, 
-                           family=binomial(link="logit"), 
-                           control=glmerControl(optimizer='bobyqa', optCtrl=list(maxfun=2e5)))
-summary(intrMod_eff_SHAPS)
-
-intrMod_eff_SHAPS <- glmer(accepted ~ Age_resc + Gender + effPrp + postTournRat + normOutMag  * SHAPS_resc 
-                           + (1 + postTournRat + normOutMag + valence + effPrp | prolificID), 
-                           data = tbtDf, 
-                           family=binomial(link="logit"), 
-                           control=glmerControl(optimizer='bobyqa', optCtrl=list(maxfun=2e5)))
-summary(intrMod_mag_SHAPS)
-
-
 
 # SET WINNING MODEL ====
 
@@ -433,6 +393,36 @@ hist_outMag <- ggplot(outMagRfx, aes(x = random_effects$normOutMag)) +
 print(hist_outMag)
 ggsave(filename = "mhWinMod_hist_outMag.png", plot = hist_outMag, width = 4, height = 6, dpi = 500, path = plotPath)
 
+# SHAPS INTERACTION MODELS ====
+
+intrMod_ptr_SHAPS <- glmer(accepted ~ Age_resc + Gender + normOutMag + effPrp + postTournRat * SHAPS_resc 
+                           + (1 + postTournRat + normOutMag + valence + effPrp | prolificID), 
+                           data = tbtDf, 
+                           family=binomial(link="logit"), 
+                           control=glmerControl(optimizer='bobyqa', optCtrl=list(maxfun=2e5)))
+summary(intrMod_ptr_SHAPS)
+
+intrMod_val_SHAPS <- glmer(accepted ~ Age_resc + Gender + normOutMag + effPrp + postTournRat + valence * SHAPS_resc 
+                           + (1 + postTournRat + normOutMag + valence + effPrp | prolificID), 
+                           data = tbtDf, 
+                           family=binomial(link="logit"), 
+                           control=glmerControl(optimizer='bobyqa', optCtrl=list(maxfun=2e5)))
+summary(intrMod_val_SHAPS)
+
+intrMod_magn_SHAPS <- glmer(accepted ~ Age_resc + Gender + normOutMag + postTournRat + effPrp * SHAPS_resc 
+                            + (1 + postTournRat + normOutMag + valence + effPrp | prolificID), 
+                            data = tbtDf, 
+                            family=binomial(link="logit"), 
+                            control=glmerControl(optimizer='bobyqa', optCtrl=list(maxfun=2e5)))
+summary(intrMod_eff_SHAPS)
+
+intrMod_eff_SHAPS <- glmer(accepted ~ Age_resc + Gender + effPrp + postTournRat + normOutMag  * SHAPS_resc 
+                           + (1 + postTournRat + normOutMag + valence + effPrp | prolificID), 
+                           data = tbtDf, 
+                           family=binomial(link="logit"), 
+                           control=glmerControl(optimizer='bobyqa', optCtrl=list(maxfun=2e5)))
+summary(intrMod_mag_SHAPS)
+
 ## FIGURE 6 - SHAPS INTERACTION PLOTS ====
 
 # Load necessary libraries
@@ -550,5 +540,54 @@ modToTest <- fits$modelsFitted[[2]]
 print(modToTest)
 # anova to look at deviance of GLMM vs. a log reg
 anova(modToTest,baseGlm) # NOTE this can be used to test for the value of including each of the fix effects too
+
+# MIXED ANOVA FOR INTERACTIONS ====
+
+participant_vars <- tbtDf %>%
+  group_by(prolificID) %>%
+  slice(1) %>%
+  select(prolificID, Age_resc, SES, Gender, SHAPS_resc, FAS_resc, 
+         AD_resc, Compul_resc, SW_resc)
+# Then aggregate the trial-level data
+
+trial_aggregated <- tbtDf %>%
+  group_by(prolificID, outProb, normOutMag, effPrp, valence) %>%
+  summarise(
+    accepted_mean = mean(accepted, na.rm = TRUE),
+    .groups = 'drop'
+  )
+# Join them back together
+aggregated_df <- trial_aggregated %>%
+  left_join(participant_vars, by = "prolificID")
+
+maov1 <- afex::aov_car(
+  accepted_mean ~ outProb + normOutMag + effPrp + valence + AD_resc+SW_resc+Compul_resc +
+    Error(prolificID/(outProb+normOutMag+effPrp+valence)),
+  data = aggregated_df,
+  add = ~ Age_resc + gender, # added as covariates
+  type = 3,
+  factorize = FALSE)
+summary(maov1)
+
+# PARTIAL CORRELATIONS ====
+
+library(ppcor)
+
+## DEFINE CONTROL VARS ====
+
+control_vars <- cbind(as.numeric(summDf$Age), as.factor(summDf$Gender))
+
+## SHAPS ====
+
+pacc_loweff_asin <- asin(sqrt(summDf$percAcceptByEffort_1/100))
+pcor.test(summDf$SHAPS_resc, pacc_loweff_asin, control_vars, method = "kendall")
+
+pacc_medeff_asin <- asin(sqrt(summDf$percAcceptByEffort_2/100))
+pcor.test(summDf$SHAPS_resc, summDf$percAcceptByEffort_2, control_vars, method = "kendall")
+
+pacc_higheff_asin <- asin(sqrt(summDf$percAcceptByEffort_3/100))
+pcor.test(summDf$SHAPS_resc, summDf$percAcceptByEffort_3, control_vars, method = "kendall")
+
+pcor.test(summDf$SHAPS_resc, summDf$percAccept, control_vars, method = "kendall")
 
 
