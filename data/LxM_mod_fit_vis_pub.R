@@ -528,16 +528,14 @@ ggsave(filename = "mhWinMod_SHAPS_pAccept_plot.svg", plot = mhWinMod_SHAPS_pAcce
 # take your best model and use an anova to compare its deviance with a logistic
 # regression without the random effects
 
-# use car anova to get chi square Wald test p values
-car::Anova(m1, type = "III")
-
 # define a glm equivalent of best model
-print(winMod)
 m0 <- glm(accepted ~ postTournRat + normOutMag + effPrp + as.factor(valence), data = tbtDf, family = binomial)
 summary(m0)
-# may want to redfine the current model for this:
+
+# select model to comp to baseGlm or m0
 modToTest <- fits$modelsFitted[[2]]
 print(modToTest)
+
 # anova to look at deviance of GLMM vs. a log reg
 anova(modToTest,baseGlm) # NOTE this can be used to test for the value of including each of the fix effects too
 
