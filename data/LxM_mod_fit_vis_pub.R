@@ -160,7 +160,7 @@ mhfits <- lxm_glmm_fit(tbtDf, model_formulas = model_formulas2)
 winMod <- ilmFits$modelsFitted[[which.min(sapply(fits$modelsFitted, AIC))]]
 summary(winMod)
 
-mhWinMod <- mhfits$modelsFitted[[which.min(sapply(fits$modelsFitted, AIC))]]
+mhWinMod <- mhfits$modelsFitted[[which.min(sapply(mhfits$modelsFitted, AIC))]]
 summary(mhWinMod)
 
 # VISUALISE ====
@@ -395,7 +395,7 @@ ggsave(filename = "mhWinMod_hist_outMag.png", plot = hist_outMag, width = 4, hei
 
 # SHAPS INTERACTION MODELS ====
 
-intrMod_ptr_SHAPS <- glmer(accepted ~ Age_resc + Gender + normOutMag + effPrp + postTournRat * SHAPS_resc 
+intrMod_ptr_SHAPS <- glmer(accepted ~ Age_resc + Gender + normOutMag + effPrp + valence + postTournRat * SHAPS_resc 
                            + (1 + postTournRat + normOutMag + valence + effPrp | prolificID), 
                            data = tbtDf, 
                            family=binomial(link="logit"), 
@@ -444,7 +444,7 @@ newdata <- expand.grid(
 )
 
 # Predict probabilities
-newdata$predicted <- predict(mhMod_wIntr1, newdata = newdata, type = "response", re.form = NA)
+newdata$predicted <- predict(mhWinMod, newdata = newdata, type = "response", re.form = NA)
 
 # Convert SHAPS_resc to factor for better labeling
 newdata$SHAPS_resc_factor <- factor(newdata$SHAPS_resc, 
@@ -464,7 +464,6 @@ plot2 <- ggplot(newdata, aes(x = postTournRat, y = predicted, color = SHAPS_resc
         legend.title = element_text(face = "bold"))
 
 print(plot2)
-ggsave(filename = "intrMod_SHAPS_ptr_plot_claude.svg", plot = plot2, width = 10, height = 10, dpi = 500, path = plotPath)
 
 # Additional visualization: Showing the difference in slopes more explicitly
 # Create slope comparison plot
@@ -483,14 +482,12 @@ plot3 <- ggplot(slopes, aes(x = SHAPS_level, y = Slope, fill = SHAPS_level)) +
         panel.grid.minor = element_blank()) +
   geom_text(aes(label = round(Slope, 2)), vjust = -0.5, size = 4)
 print(plot3)
-ggsave(filename = "intrMod_SHAPS_ptr_bar_claude.svg", plot = plot3, width = 10, height = 6, dpi = 500, path = plotPath)
 
 comb_intr_plot <- gridExtra::grid.arrange(plot2, plot3, ncol = 2)
-ggsave(filename = "intrMod_SHAPS_ptr_combPlot.svg", plot = comb_intr_plot, width = 12, height = 8, dpi = 500, path = plotPath)
 
 ## FIGURE S6 - SHAPS EFFECT ON LOG-ODDS ACCEPT ====
 
-mhMod_SHAPS__ptr_plot <- ggpredict(mhWinMod, terms = c("effPrp [all]","SHAPS_resc [-1.5, 0, 3]"), type = "fe") %>%
+mhMod_SHAPS_ptr_plot <- ggpredict(mhWinMod, terms = c("effPrp [all]","SHAPS_resc [-1.5, 0, 3]"), type = "fe") %>%
   plot() +
   scale_fill_manual(values = c("#F9AED3","#8AC926","#4A90E0")) +
   scale_colour_manual(values = c("#F9AED3","#8AC926","#4A90E0")) +
@@ -504,8 +501,7 @@ mhMod_SHAPS__ptr_plot <- ggpredict(mhWinMod, terms = c("effPrp [all]","SHAPS_res
     legend.position = "right",
   ) +
   theme_minimal(base_size = 18)
-print(mhMod_SHAPS_plot)
-ggsave(filename = "mhMod_SHAPS_plot.svg", plot = mhMod_SHAPS_plot, width = 5, height = 5, dpi = 500, path = plotPath)
+print(mhMod_SHAPS_ptr_plot)
 
 ## FIGURE S6 - SHAPS ON P(ACCEPT) ====
 
@@ -521,15 +517,13 @@ mhWinMod_SHAPS_pAccept_plot <- ggplot(marginal_effects, aes(x = x, y = predicted
   ) +
   theme_minimal(base_size = 18)
 print(mhWinMod_SHAPS_pAccept_plot)
-ggsave(filename = "mhWinMod_SHAPS_pAccept_plot.svg", plot = mhWinMod_SHAPS_pAccept_plot, width = 5, height = 5, dpi = 500, path = plotPath)
-
 
 # IS YOUR RANDOM EFX TERM JUSTIFIED???? ====
 # take your best model and use an anova to compare its deviance with a logistic
 # regression without the random effects
 
 # define a glm equivalent of best model
-m0 <- glm(accepted ~ postTournRat + normOutMag + effPrp + as.factor(valence), data = tbtDf, family = binomial)
+m0 <- glm(accepted ~ postTournRat + normOutMag + effPrp + as.factor(valence) + Age_resc + Gender, data = tbtDf, family = binomial)
 summary(m0)
 
 # select model to comp to baseGlm or m0
@@ -537,17 +531,17 @@ modToTest <- fits$modelsFitted[[2]]
 print(modToTest)
 
 # anova to look at deviance of GLMM vs. a log reg
-anova(modToTest,baseGlm) # NOTE this can be used to test for the value of including each of the fix effects too
+anova(modToTest,baseGlm) # NOTE model to comp can be baseGlm or m0 
 
 # MIXED ANOVA FOR INTERACTIONS ====
 
 participant_vars <- tbtDf %>%
   group_by(prolificID) %>%
   slice(1) %>%
-  select(prolificID, Age_resc, SES, Gender, SHAPS_resc, FAS_resc, 
+  dplyr::select(prolificID, Age_resc, SES, Gender, SHAPS_resc, FAS_resc, 
          AD_resc, Compul_resc, SW_resc)
-# Then aggregate the trial-level data
 
+# Then aggregate the trial-level data
 trial_aggregated <- tbtDf %>%
   group_by(prolificID, outProb, normOutMag, effPrp, valence) %>%
   summarise(
@@ -559,7 +553,7 @@ aggregated_df <- trial_aggregated %>%
   left_join(participant_vars, by = "prolificID")
 
 maov1 <- afex::aov_car(
-  accepted_mean ~ outProb + normOutMag + effPrp + valence + AD_resc+SW_resc+Compul_resc +
+  accepted_mean ~ outProb + normOutMag + effPrp + valence +
     Error(prolificID/(outProb+normOutMag+effPrp+valence)),
   data = aggregated_df,
   add = ~ Age_resc + gender, # added as covariates
