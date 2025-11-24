@@ -1,6 +1,8 @@
 # LxM LOAD AND PREPROCESS ====
 ## function for loading variants of the LxMfinal data set and doing some requisite pre-processing
 
+## MAKE SURE YOU CHANGE base_dir
+
 # LIBS ====
 
 library(dplyr)
@@ -9,7 +11,7 @@ library(dplyr)
 
  lxm_load_preprocess <- function(clean, tourn_remove) {
   
-   base_dir <- "/Users/calum/lxmAnalysisPub/data/"
+   base_dir <- "/Users/calum/lxmAnalysisPub/data/" # change this
    
    # for now just edit the number after lxm to change version
    fileNameTbt <- "choice_trialByTrial.csv"

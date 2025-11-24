@@ -1,9 +1,22 @@
 # LxM MIXED MODEL FIT AND VIS ====
+        # By Calum Guinea, 2025
 
-# script for fitting GLMMs to trial-by-trial choice data from 'Effort choices are sensitive to prior
-# learning'
+# This script, used in combination with LxM_load_and_preprocess does the following:
 
-# Please excuse the long list of packages for now 
+  # visualises generalised linear mixed models to participants' choice data
+  # ANOVAs of accept rates
+  # effect of anhedonia plus exploratory interaction models
+  # partial correlations between anhedonia and % accept
+
+# HOW TO USE:
+      # Please setwd to the location where you have either cloned the linked repo or 
+      # downloaded the data and code to
+
+      # To use LxM_load_and_preprocess please also open this script and change 
+      # base_dir to the folder where you have cloned this repo or downloaded the 
+      # data and code to
+
+# Please excuse the long list of packages for now...
 
 # PACKAGES ====
 
@@ -27,9 +40,6 @@ library(emmeans)
 library(dplyr)
 library(broom.mixed)
 library(purrr)
-# simulation
-library(simr) # pkg for GLMM based power calc
-library(RLRsim)
 # model eval
 library(lmerTest)
 library(performance)
@@ -45,9 +55,10 @@ library(car)      # For Levene's test
 library(rstatix)  # For statistical tests
 library(afex)
 
+
 # LOAD DATA ====
 
-setwd('/Users/calum/lxmAnalysisPub/data/')
+setwd('/Users/calum/lxmAnalysisPub/data/') # PLEASE CHOOSE YOUR OWN FOLDER LOCATION 
 
 source('LxM_load_and_preprocess.R')
 
@@ -56,8 +67,8 @@ data <- lxm_load_preprocess(clean = 1, tourn_remove = 1)
 tbtDf <- data$tbtDf
 summDf <- data$summDf
 
+
 # MODEL 0 ====
-## NOTE use this to identify whether demo variables need to be included in GLMMs
 
 baseGlm <- glm(accepted ~ Age_resc+Gender+SES+ord+outProb+normOutMag+effPrp+valence,
                data = tbtDf,
@@ -97,6 +108,7 @@ model_formulas2 <- list(
   f4 = accepted ~ Age_resc+Gender+postTournRat+normOutMag+effPrp+valence+AD+Compul+SW+(1+postTournRat+normOutMag+effPrp+valence|prolificID),
   f5 = accepted ~ Age_resc+Gender+postTournRat+normOutMag+effPrp+valence+FAS_resc+(1+postTournRat+normOutMag+effPrp+valence|prolificID)
 )
+
 
 # FITTING GLMMS ====
 
@@ -149,11 +161,13 @@ lxm_glmm_fit <- function(tbtDf, model_formulas) {
   
 }
 
+
 # CALL THE FUNCTION ====
 
 ilmFits <- lxm_glmm_fit(tbtDf = tbtDf, model_formulas = model_formulas1)
 
 mhfits <- lxm_glmm_fit(tbtDf, model_formulas = model_formulas2)
+
 
 # SET WINNING MODEL ====
 
@@ -162,6 +176,7 @@ summary(winMod)
 
 mhWinMod <- mhfits$modelsFitted[[which.min(sapply(mhfits$modelsFitted, AIC))]]
 summary(mhWinMod)
+
 
 # VISUALISE ====
 
@@ -206,6 +221,7 @@ winMod_fixEffBar <- ggplot(fixed_effects, aes(x = term, y = estimate, fill = ter
 print(winMod_fixEffBar)
 ggsave(filename = "winMod_fixEffBar.svg", plot = winMod_fixEffBar, width = 9, height = 6, dpi = 500, path = plotPath)
 
+
 ### HISTOGRAMS OF RFX ====
 # NOTE aes in these plots need to be manually changed to reflect m1 or winMod
 
@@ -226,6 +242,7 @@ hist_ptr <- ggplot(outProbEstRfx, aes(x = outProbRfx)) +
 print(hist_ptr)
 ggsave(filename = "winMod_hist_ptr.png", plot = hist_ptr, width = 4, height = 6, dpi = 500, path = plotPath)
 
+
 ## VALENCE
 bin_count <- 20
 x_min <- min(valRfx)
@@ -242,6 +259,7 @@ hist_val <- ggplot(valRfx, aes(x = random_effects$valence)) +
   theme_minimal(base_size = 16) 
 print(hist_val)
 ggsave(filename = "winMod_hist_val.png", plot = hist_val, width = 4, height = 6, dpi = 500, path = plotPath)
+
 
 ## EFFORT
 bin_count <- 20
@@ -260,6 +278,7 @@ hist_effLvl <- ggplot(effLvlRfx, aes(x = random_effects$effPrp)) +
 print(hist_effLvl)
 ggsave(filename = "winMod_hist_effLvl.png", plot = hist_effLvl, width = 4, height = 6, dpi = 500, path = plotPath)
 
+
 ## OUTCOME MAGNITUDE 
 bin_count <- 20
 x_min <- min(outMagRfx)
@@ -276,6 +295,7 @@ hist_outMag <- ggplot(outMagRfx, aes(x = random_effects$normOutMag)) +
   theme_minimal(base_size = 16)
 print(hist_outMag)
 ggsave(filename = "winMod_hist_outMag.png", plot = hist_outMag, width = 4, height = 6, dpi = 500, path = plotPath)
+
 
 ## MH MOD ====
 
@@ -342,6 +362,7 @@ hist_ptr <- ggplot(outProbEstRfx, aes(x = outProbRfx)) +
 print(hist_ptr)
 ggsave(filename = "mhWinMod_hist_ptr.png", plot = hist_ptr, width = 4, height = 6, dpi = 500, path = plotPath)
 
+
 ## VALENCE
 bin_count <- 20
 x_min <- min(valRfx)
@@ -358,6 +379,7 @@ hist_val <- ggplot(valRfx, aes(x = random_effects$valence)) +
   theme_minimal(base_size = 16) 
 print(hist_val)
 ggsave(filename = "mhWinMod_hist_val.png", plot = hist_val, width = 4, height = 6, dpi = 500, path = plotPath)
+
 
 ## EFFORT
 bin_count <- 20
@@ -376,6 +398,7 @@ hist_effLvl <- ggplot(effLvlRfx, aes(x = random_effects$effPrp)) +
 print(hist_effLvl)
 ggsave(filename = "mhWinMod_hist_effLvl.png", plot = hist_effLvl, width = 4, height = 6, dpi = 500, path = plotPath)
 
+
 ## OUTCOME MAGNITUDE 
 bin_count <- 20
 x_min <- min(outMagRfx)
@@ -392,6 +415,7 @@ hist_outMag <- ggplot(outMagRfx, aes(x = random_effects$normOutMag)) +
   theme_minimal(base_size = 16)
 print(hist_outMag)
 ggsave(filename = "mhWinMod_hist_outMag.png", plot = hist_outMag, width = 4, height = 6, dpi = 500, path = plotPath)
+
 
 # SHAPS INTERACTION MODELS ====
 
@@ -422,6 +446,7 @@ intrMod_eff_SHAPS <- glmer(accepted ~ Age_resc + Gender + effPrp + postTournRat 
                            family=binomial(link="logit"), 
                            control=glmerControl(optimizer='bobyqa', optCtrl=list(maxfun=2e5)))
 summary(intrMod_mag_SHAPS)
+
 
 ## FIGURE 6 - SHAPS INTERACTION PLOTS ====
 
@@ -465,6 +490,7 @@ plot2 <- ggplot(newdata, aes(x = postTournRat, y = predicted, color = SHAPS_resc
 
 print(plot2)
 
+
 # Additional visualization: Showing the difference in slopes more explicitly
 # Create slope comparison plot
 slopes <- data.frame(
@@ -485,6 +511,7 @@ print(plot3)
 
 comb_intr_plot <- gridExtra::grid.arrange(plot2, plot3, ncol = 2)
 
+
 ## FIGURE S6 - SHAPS EFFECT ON LOG-ODDS ACCEPT ====
 
 mhMod_SHAPS_ptr_plot <- ggpredict(mhWinMod, terms = c("effPrp [all]","SHAPS_resc [-1.5, 0, 3]"), type = "fe") %>%
@@ -503,6 +530,7 @@ mhMod_SHAPS_ptr_plot <- ggpredict(mhWinMod, terms = c("effPrp [all]","SHAPS_resc
   theme_minimal(base_size = 18)
 print(mhMod_SHAPS_ptr_plot)
 
+
 ## FIGURE S6 - SHAPS ON P(ACCEPT) ====
 
 library(ggeffects)
@@ -518,6 +546,7 @@ mhWinMod_SHAPS_pAccept_plot <- ggplot(marginal_effects, aes(x = x, y = predicted
   theme_minimal(base_size = 18)
 print(mhWinMod_SHAPS_pAccept_plot)
 
+
 # IS YOUR RANDOM EFX TERM JUSTIFIED???? ====
 # take your best model and use an anova to compare its deviance with a logistic
 # regression without the random effects
@@ -532,6 +561,7 @@ print(modToTest)
 
 # anova to look at deviance of GLMM vs. a log reg
 anova(modToTest,baseGlm) # NOTE model to comp can be baseGlm or m0 
+
 
 # MIXED ANOVA FOR INTERACTIONS ====
 
@@ -560,6 +590,7 @@ maov1 <- afex::aov_car(
   type = 3,
   factorize = FALSE)
 summary(maov1)
+
 
 # PARTIAL CORRELATIONS ====
 

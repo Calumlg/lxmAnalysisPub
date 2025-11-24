@@ -3,11 +3,13 @@
 # =============================================================================
 # This script generates all publication-ready figures from the LxM manuscript
 
-# USE:
-    # install any of the required packages by uncommenting INSTALL REQUIRED PACKAGES code
-    # load required packages
-    # put all the data files in a single folder and setwd to that folder
-    # run
+# HOW TO USE:
+    # - install any of the required packages by uncommenting INSTALL REQUIRED PACKAGES code
+    # - ensure base_dir in LxM_load_and_preprocess is set to the folder where the
+    # repo was cloned or the data and code was downloaded
+
+# Data figures from the manuscript can be reproduced after loading and pre-processing
+# the data - search FIGURE to see find the code for each figure
 
 # INSTALL REQUIRED PACKAGES (run once) ====
 # Uncomment the following lines if you need to install packages:
