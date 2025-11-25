@@ -1,0 +1,704 @@
+---
+title: "Learning x Motivation Analysis"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 10,
+  fig.height = 6,
+  dpi = 300
+)
+```
+
+# Overview
+
+This notebook provides a complete workflow for analyzing Learning x Motivation (LxM) data including:
+
+- Data loading and preprocessing
+- Mixed model fitting and comparison
+- Publication-quality visualizations
+- Statistical analyses
+
+**To use this notebook:**
+
+1. Update the working directory in the next chunk
+2. Ensure your data files are in that directory
+3. Run all chunks sequentially (or use "Run All")
+
+---
+
+# Setup
+
+## Set Working Directory
+
+```{r set-directory}
+# Change this to your data folder location
+setwd('C:/Users/calum.guinea/OneDrive - University College London/Documents/lxmAnalysisPub/data')
+```
+
+## Install Packages (if needed)
+
+Run this chunk once if you need to install packages:
+
+```{r install-packages, eval=FALSE}
+install.packages(c("dplyr", "tidyr", "lme4", "ggplot2", "ggeffects", 
+                   "broom.mixed", "ggdist", "ggpubr", "ppcor", "corrplot",
+                   "reshape2", "knitr", "DT"))
+```
+
+## Load Packages
+
+```{r load-packages}
+library(dplyr)
+library(tidyr)
+library(lme4)
+library(ggplot2)
+library(ggeffects)
+library(broom.mixed)
+library(ggdist)
+library(ggpubr)
+library(ppcor)
+library(corrplot)
+library(reshape2)
+library(knitr)
+library(DT)
+```
+
+---
+
+# Data Loading and Preprocessing
+
+## Define Preprocessing Function
+
+This function loads the data files and prepares them for analysis by:
+
+- Converting valence to binary (0 = loss, 1 = reward)
+- Scaling continuous predictors (mean-centering and standardizing)
+- Optionally excluding participants with poor tournament performance
+
+```{r preprocessing-function}
+load_and_preprocess_data <- function(exclude_low_performance = TRUE) {
+  
+  # Read data files
+  tbtDf <- read.csv("choice_trialByTrial.csv")
+  summDf <- read.csv("summaryFull.csv")
+  
+  # Rename ID column for consistency
+  summDf <- summDf %>% rename(prolificID = ParticipantId)
+  
+  # Convert valence to binary factor (0 = loss, 1 = reward)
+  tbtDf <- tbtDf %>% mutate(valence = ifelse(valence == -1, 0, 1))
+  tbtDf$valence <- as.factor(tbtDf$valence)
+  
+  # Scale continuous predictors (mean-centered and standardized)
+  # Learning fidelity measures
+  tbtDf$postLearnRat_resc <- scale(tbtDf$postLearnRat)
+  tbtDf$postTournRat_resc <- scale(tbtDf$postTournRat)
+  tbtDf$postEffortRat_resc <- scale(tbtDf$postEffortRat)
+  tbtDf$meanEstByStim_resc <- scale(tbtDf$meanEstByStim)
+  tbtDf$finLearningEst_resc <- scale(tbtDf$finLearningEst)
+  
+  # Decision variables
+  tbtDf$effDiscEV <- scale(tbtDf$effDiscEV)
+  tbtDf$alienEV <- scale(tbtDf$alienEV)
+  
+  # Demographics
+  tbtDf$Age_resc <- scale(tbtDf$Age)
+  tbtDf$Sex <- as.factor(tbtDf$Sex)
+  tbtDf$Gender <- as.factor(tbtDf$Gender)
+  
+  # Questionnaire scores
+  tbtDf$SHAPS_resc <- scale(tbtDf$SHAPS)
+  summDf$SHAPS_resc <- scale(summDf$SHAPS)
+  tbtDf$AD_resc <- scale(tbtDf$AD)
+  tbtDf$SW_resc <- scale(tbtDf$SW)
+  tbtDf$Compul_resc <- scale(tbtDf$Compul)
+  tbtDf$FAS_resc <- scale(tbtDf$FAS)
+  tbtDf$AES_resc <- scale(tbtDf$AES)
+  tbtDf$STAI_resc <- scale(tbtDf$STAI)
+  
+  summDf$FAS_resc <- scale(summDf$FAS)
+  summDf$AES_resc <- scale(summDf$AES)
+  summDf$STAI_resc <- scale(summDf$STAI)
+  
+  # Exclude participants with poor tournament performance if requested
+  if (exclude_low_performance) {
+    threshold <- 50  # Above chance performance
+    tbtDf <- tbtDf[tbtDf$ovrperc > threshold, ]
+    summDf <- summDf[summDf$ovrperc > threshold, ]
+  }
+  
+  # Create expected value difference variable
+  tbtDf <- tbtDf %>%
+    mutate(evDiff = ifelse(
+      outMag < 0,
+      (abs(outMag) * outProb) - (abs(outMag) * 1),
+      (abs(outMag) * outProb) - (abs(outMag) * 0)
+    ))
+  tbtDf$evDiff <- abs(tbtDf$evDiff)
+  
+  return(list(tbtDf = tbtDf, summDf = summDf))
+}
+```
+
+## Load Data
+
+```{r load-data}
+data <- load_and_preprocess_data(exclude_low_performance = TRUE)
+tbtDf <- data$tbtDf
+summDf <- data$summDf
+```
+
+## Sample Characteristics
+
+```{r sample-stats}
+cat(sprintf("Sample size: %d participants\n", length(unique(tbtDf$prolificID))))
+cat(sprintf("Total trials: %d\n", nrow(tbtDf)))
+cat(sprintf("Mean age: %.1f (SD = %.1f)\n", 
+            mean(summDf$Age, na.rm = TRUE), sd(summDf$Age, na.rm = TRUE)))
+```
+
+---
+
+# Model Fitting
+
+## Define Model Formulas
+
+We compare two sets of models:
+
+1. **Learning measure models**: Compare different ways of measuring individualized learning
+2. **Mental health models**: Test effects of psychiatric symptoms on effort-based decisions
+
+```{r model-formulas}
+# Set 1: Compare different individualized learning measures
+learning_models <- list(
+  base = accepted ~ Age_resc + Gender + outProb + normOutMag + effPrp + valence + 
+    (1 + outProb + normOutMag + effPrp + valence | prolificID),
+  
+  post_learn = accepted ~ Age_resc + Gender + postLearnRat + normOutMag + effPrp + valence + 
+    (1 + postLearnRat + normOutMag + effPrp + valence | prolificID),
+  
+  post_tourn = accepted ~ Age_resc + Gender + postTournRat + normOutMag + effPrp + valence + 
+    (1 + postTournRat + normOutMag + effPrp + valence | prolificID),
+  
+  mean_estimate = accepted ~ Age_resc + Gender + meanEstByStim + normOutMag + effPrp + valence + 
+    (1 + meanEstByStim + normOutMag + effPrp + valence | prolificID),
+  
+  final_learning = accepted ~ Age_resc + Gender + finLearningEst + normOutMag + effPrp + valence + 
+    (1 + finLearningEst + normOutMag + effPrp + valence | prolificID)
+)
+
+# Set 2: Mental health predictors
+mental_health_models <- list(
+  base = accepted ~ Age_resc + Gender + postTournRat + normOutMag + effPrp + valence + 
+    (1 + postTournRat + normOutMag + effPrp + valence | prolificID),
+  
+  shaps = accepted ~ Age_resc + Gender + postTournRat + normOutMag + effPrp + valence + SHAPS_resc + 
+    (1 + postTournRat + normOutMag + effPrp + valence | prolificID),
+  
+  transdiagnostic = accepted ~ Age_resc + Gender + postTournRat + normOutMag + effPrp + valence + 
+    AD + Compul + SW + (1 + postTournRat + normOutMag + effPrp + valence | prolificID),
+  
+  fatigue = accepted ~ Age_resc + Gender + postTournRat + normOutMag + effPrp + valence + FAS_resc + 
+    (1 + postTournRat + normOutMag + effPrp + valence | prolificID)
+)
+```
+
+## Model Fitting Function
+
+This function fits all models in a set and compares them using AIC and BIC.
+
+```{r model-fitting-function}
+fit_model_set <- function(data, model_formulas, set_name = "models") {
+  
+  cat(sprintf("Fitting %s...\n", set_name))
+  
+  models <- list()
+  results <- data.frame(
+    model = character(),
+    AIC = numeric(),
+    BIC = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (i in seq_along(model_formulas)) {
+    model_name <- names(model_formulas)[i]
+    cat(sprintf("  Fitting model %d/%d: %s\n", i, length(model_formulas), model_name))
+    
+    model <- glmer(
+      model_formulas[[i]], 
+      data = data, 
+      family = binomial(link = "logit"),
+      control = glmerControl(optimizer = 'bobyqa', optCtrl = list(maxfun = 2e5))
+    )
+    
+    models[[model_name]] <- model
+    results <- rbind(results, data.frame(
+      model = model_name,
+      AIC = AIC(model),
+      BIC = BIC(model)
+    ))
+  }
+  
+  # Identify best model
+  best_model_name <- results$model[which.min(results$AIC)]
+  cat(sprintf("\nBest model by AIC: %s\n", best_model_name))
+  
+  return(list(
+    models = models,
+    results = results,
+    best_model = models[[best_model_name]]
+  ))
+}
+```
+
+## Fit Learning Models
+
+```{r fit-learning-models}
+learning_fits <- fit_model_set(tbtDf, learning_models, "learning measure models")
+```
+
+### Model Comparison - Learning Models
+
+```{r learning-comparison-table}
+datatable(learning_fits$results, 
+          caption = "Learning Models Comparison",
+          options = list(pageLength = 10))
+```
+
+```{r learning-comparison-plots, fig.height=4}
+# AIC comparison
+p_aic <- ggplot(learning_fits$results, aes(x = reorder(model, AIC), y = AIC)) +
+  geom_col(fill = "steelblue") +
+  labs(x = "Model", y = "AIC") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# BIC comparison
+p_bic <- ggplot(learning_fits$results, aes(x = reorder(model, BIC), y = BIC)) +
+  geom_col(fill = "darkgreen") +
+  labs(x = "Model", y = "BIC") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+gridExtra::grid.arrange(p_aic, p_bic, ncol = 2)
+```
+
+### Best Learning Model Summary
+
+```{r learning-model-summary}
+summary(learning_fits$best_model)
+```
+
+## Fit Mental Health Models
+
+```{r fit-mh-models}
+mh_fits <- fit_model_set(tbtDf, mental_health_models, "mental health models")
+```
+
+### Model Comparison - Mental Health Models
+
+```{r mh-comparison-table}
+datatable(mh_fits$results, 
+          caption = "Mental Health Models Comparison",
+          options = list(pageLength = 10))
+```
+
+```{r mh-comparison-plots, fig.height=4}
+# AIC comparison
+p_aic_mh <- ggplot(mh_fits$results, aes(x = reorder(model, AIC), y = AIC)) +
+  geom_col(fill = "steelblue") +
+  labs(x = "Model", y = "AIC") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# BIC comparison
+p_bic_mh <- ggplot(mh_fits$results, aes(x = reorder(model, BIC), y = BIC)) +
+  geom_col(fill = "darkgreen") +
+  labs(x = "Model", y = "BIC") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+gridExtra::grid.arrange(p_aic_mh, p_bic_mh, ncol = 2)
+```
+
+### Best Mental Health Model Summary
+
+```{r mh-model-summary}
+summary(mh_fits$best_model)
+```
+
+---
+
+# Visualizations - Model Effects
+
+## Fixed Effects
+
+Fixed effects show the average impact of each predictor across all participants.
+
+```{r fixed-effects-plot, fig.width=8, fig.height=6}
+# Extract fixed effects from best learning model
+fixed_effects <- tidy(learning_fits$best_model, effects = "fixed", conf.int = TRUE)
+
+# Create plot
+ggplot(fixed_effects, aes(x = reorder(term, estimate), y = estimate)) +
+  geom_point(size = 4, color = "steelblue") +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.2, linewidth = 1) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  coord_flip() +
+  labs(x = "", y = "Beta estimate (log-odds)", 
+       title = "Fixed Effects from Best Learning Model") +
+  theme_minimal(base_size = 14) +
+  theme(panel.grid.major.y = element_blank())
+```
+
+```{r fixed-effects-table}
+# Display as table
+kable(fixed_effects, digits = 3, caption = "Fixed Effects Estimates")
+```
+
+## Random Effects
+
+Random effects capture individual differences in how predictors affect choice behavior.
+
+```{r random-effects-extraction}
+# Extract random effects
+random_effects <- ranef(learning_fits$best_model)$prolificID
+
+# Create dataframe of random slopes
+random_slopes <- data.frame(
+  participant = rownames(random_effects),
+  outcome_prob = random_effects$postTournRat,
+  outcome_mag = random_effects$normOutMag,
+  effort = random_effects$effPrp,
+  valence = random_effects$valence1
+)
+```
+
+### Distribution of Random Slopes
+
+```{r random-slopes-plots, fig.width=10, fig.height=8}
+# Reshape for plotting
+slopes_long <- random_slopes %>%
+  pivot_longer(cols = -participant, names_to = "effect", values_to = "slope")
+
+# Plot all distributions
+ggplot(slopes_long, aes(x = slope, fill = effect)) +
+  geom_histogram(bins = 30, color = "black", alpha = 0.7) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red", linewidth = 1) +
+  facet_wrap(~ effect, scales = "free", ncol = 2) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(x = "Random slope value", y = "Frequency",
+       title = "Distribution of Individual Differences in Model Effects") +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+```
+
+## Marginal Effects
+
+Marginal effects show predicted probabilities across the range of each predictor.
+
+### Effect of Outcome Probability
+
+```{r marginal-prob, fig.width=8, fig.height=5}
+ggpredict(learning_fits$best_model, terms = "postTournRat [all]") %>%
+  plot() +
+  labs(x = "Post-tournament rating", y = "P(accept)",
+       title = "Effect of Outcome Probability on Acceptance") +
+  theme_minimal(base_size = 14)
+```
+
+### Effect of Effort Level
+
+```{r marginal-effort, fig.width=8, fig.height=5}
+ggpredict(learning_fits$best_model, terms = "effPrp [all]") %>%
+  plot() +
+  labs(x = "Effort level", y = "P(accept)",
+       title = "Effect of Effort on Acceptance") +
+  theme_minimal(base_size = 14)
+```
+
+### Effect of Outcome Magnitude by Valence
+
+```{r marginal-magnitude-valence, fig.width=8, fig.height=5}
+ggpredict(learning_fits$best_model, terms = c("normOutMag [all]", "valence")) %>%
+  plot() +
+  scale_color_manual(values = c("#FF1744", "#1AC71A"), 
+                     labels = c("Loss", "Reward")) +
+  scale_fill_manual(values = c("#FF1744", "#1AC71A"), 
+                    labels = c("Loss", "Reward")) +
+  labs(x = "Outcome magnitude", y = "P(accept)", color = "Valence", fill = "Valence",
+       title = "Interaction: Outcome Magnitude × Valence") +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "bottom")
+```
+
+---
+
+# Mental Health Effects
+
+## SHAPS Main Effect
+
+```{r shaps-main-effect, fig.width=8, fig.height=5}
+# Check if SHAPS is in the model
+if ("SHAPS_resc" %in% names(coef(mh_fits$best_model)$prolificID)) {
+  
+  ggpredict(mh_fits$best_model, terms = "SHAPS_resc [all]") %>%
+    plot() +
+    labs(x = "SHAPS score (z-scored)", y = "P(accept)",
+         title = "Effect of Anhedonia on Effort Acceptance") +
+    theme_minimal(base_size = 14)
+  
+} else {
+  cat("SHAPS not included in best mental health model\n")
+}
+```
+
+## SHAPS × Outcome Probability Interaction
+
+```{r shaps-interaction, fig.width=10, fig.height=6}
+if ("SHAPS_resc" %in% names(coef(mh_fits$best_model)$prolificID)) {
+  
+  ggpredict(mh_fits$best_model, 
+            terms = c("postTournRat [all]", "SHAPS_resc [-1.5, 0, 1.5]")) %>%
+    plot() +
+    scale_color_manual(values = c("#26547c", "#ffd166", "#ef476f"),
+                       labels = c("Low SHAPS (-1.5 SD)", "Mean SHAPS", "High SHAPS (+1.5 SD)")) +
+    scale_fill_manual(values = c("#26547c", "#ffd166", "#ef476f"),
+                      labels = c("Low SHAPS (-1.5 SD)", "Mean SHAPS", "High SHAPS (+1.5 SD)")) +
+    labs(x = "Post-tournament rating", y = "P(accept)", 
+         color = "Anhedonia Level", fill = "Anhedonia Level",
+         title = "Interaction: How Anhedonia Modulates Learning Effects") +
+    theme_minimal(base_size = 14) +
+    theme(legend.position = "bottom")
+  
+} else {
+  cat("SHAPS not included in best mental health model\n")
+}
+```
+
+---
+
+# Descriptive Visualizations
+
+## Learning Trajectories
+
+Shows how participants learned stimulus values over trials.
+
+```{r learning-trajectories, fig.width=10, fig.height=12}
+if (file.exists("allEstsByStim.csv")) {
+  
+  raw_estimates <- read.csv("allEstsByStim.csv")
+  
+  # Convert to long format
+  estimates_long <- raw_estimates %>%
+    rename(stimulus = 1) %>%
+    pivot_longer(cols = -stimulus, names_to = "trial", values_to = "estimate") %>%
+    mutate(trial = as.integer(gsub("X", "", trial)))
+  
+  # Calculate mean and SE by stimulus and trial
+  estimates_summary <- estimates_long %>%
+    group_by(stimulus, trial) %>%
+    summarize(
+      mean_est = mean(estimate, na.rm = TRUE),
+      se_est = sd(estimate, na.rm = TRUE) / sqrt(n()),
+      .groups = "drop"
+    )
+  
+  # Plot learning trajectories
+  ggplot(estimates_summary, 
+         aes(x = trial, y = mean_est, color = factor(stimulus))) +
+    geom_line(linewidth = 0.8) +
+    geom_point(size = 1.5) +
+    geom_ribbon(aes(ymin = mean_est - se_est, ymax = mean_est + se_est, 
+                    fill = factor(stimulus)), alpha = 0.2, color = NA) +
+    facet_wrap(~ stimulus, ncol = 2) +
+    ylim(0, 1) +
+    labs(x = "Trial", y = "Average rating",
+         title = "Learning Trajectories by Stimulus") +
+    theme_minimal(base_size = 14) +
+    theme(legend.position = "none",
+          strip.background = element_rect(fill = "lightgray"))
+  
+} else {
+  cat("Learning trajectory data (allEstsByStim.csv) not found\n")
+}
+```
+
+## Final Learning Estimates
+
+Shows how well participants learned each stimulus by the end of training.
+
+```{r final-estimates, fig.width=10, fig.height=6}
+# Prepare data
+variables <- paste0("finLearningEst_", 1:8)
+estimates_df <- summDf %>%
+  select(prolificID, all_of(variables)) %>%
+  pivot_longer(cols = -prolificID, names_to = "stimulus", values_to = "estimate") %>%
+  mutate(
+    stimulus = factor(stimulus, levels = variables),
+    valence = ifelse(grepl("[1357]", stimulus), "Loss", "Reward")
+  )
+
+# Plot
+ggplot(estimates_df, aes(x = stimulus, y = estimate, fill = valence)) +
+  geom_boxplot(alpha = 0.6) +
+  geom_jitter(width = 0.2, alpha = 0.3, size = 0.5) +
+  scale_fill_manual(values = c("Loss" = "#FF1744", "Reward" = "#1AC71A")) +
+  scale_x_discrete(labels = paste("Alien", 1:8)) +
+  labs(x = "Stimulus", y = "Final learning estimate", fill = "Valence",
+       title = "Final Learning Estimates by Stimulus") +
+  theme_minimal(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom")
+```
+
+## Questionnaire Distributions
+
+```{r questionnaire-distributions, fig.width=8, fig.height=6}
+# Prepare data
+questionnaires <- summDf %>%
+  select(prolificID, SHAPS, FAS) %>%
+  pivot_longer(cols = -prolificID, names_to = "questionnaire", values_to = "score")
+
+# Plot
+ggplot(questionnaires, aes(x = questionnaire, y = score, fill = questionnaire)) +
+  stat_halfeye(adjust = 0.5, width = 0.6, .width = 0, justification = -0.3, 
+               point_colour = NA) +
+  geom_boxplot(width = 0.25, outlier.shape = NA, alpha = 0.5) +
+  geom_jitter(width = 0.1, alpha = 0.3, size = 1) +
+  scale_fill_manual(values = c("SHAPS" = "#30c5d2", "FAS" = "#E4C2C6")) +
+  labs(x = "", y = "Score",
+       title = "Distribution of Questionnaire Scores") +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "none")
+```
+
+---
+
+# Statistical Tests
+
+## Partial Correlations
+
+Examining relationships between anhedonia (SHAPS) and effort acceptance, controlling for age and gender.
+
+```{r partial-correlations}
+# Define control variables
+control_vars <- cbind(as.numeric(summDf$Age), as.factor(summDf$Gender))
+
+# Initialize results dataframe
+pcor_results <- data.frame(
+  comparison = character(),
+  estimate = numeric(),
+  p_value = numeric(),
+  statistic = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Low effort
+if ("percAcceptByEffort_1" %in% names(summDf)) {
+  pacc_low <- asin(sqrt(summDf$percAcceptByEffort_1 / 100))
+  pcor_low <- pcor.test(summDf$SHAPS_resc, pacc_low, control_vars, method = "kendall")
+  pcor_results <- rbind(pcor_results, data.frame(
+    comparison = "SHAPS × Low effort acceptance",
+    estimate = pcor_low$estimate,
+    p_value = pcor_low$p.value,
+    statistic = pcor_low$statistic
+  ))
+}
+
+# Medium effort
+if ("percAcceptByEffort_2" %in% names(summDf)) {
+  pacc_med <- asin(sqrt(summDf$percAcceptByEffort_2 / 100))
+  pcor_med <- pcor.test(summDf$SHAPS_resc, pacc_med, control_vars, method = "kendall")
+  pcor_results <- rbind(pcor_results, data.frame(
+    comparison = "SHAPS × Medium effort acceptance",
+    estimate = pcor_med$estimate,
+    p_value = pcor_med$p.value,
+    statistic = pcor_med$statistic
+  ))
+}
+
+# High effort
+if ("percAcceptByEffort_3" %in% names(summDf)) {
+  pacc_high <- asin(sqrt(summDf$percAcceptByEffort_3 / 100))
+  pcor_high <- pcor.test(summDf$SHAPS_resc, pacc_high, control_vars, method = "kendall")
+  pcor_results <- rbind(pcor_results, data.frame(
+    comparison = "SHAPS × High effort acceptance",
+    estimate = pcor_high$estimate,
+    p_value = pcor_high$p.value,
+    statistic = pcor_high$statistic
+  ))
+}
+
+# Overall acceptance
+if ("percAccept" %in% names(summDf)) {
+  pcor_overall <- pcor.test(summDf$SHAPS_resc, summDf$percAccept, control_vars, method = "kendall")
+  pcor_results <- rbind(pcor_results, data.frame(
+    comparison = "SHAPS × Overall acceptance",
+    estimate = pcor_overall$estimate,
+    p_value = pcor_overall$p.value,
+    statistic = pcor_overall$statistic
+  ))
+}
+
+# Display results
+kable(pcor_results, digits = 4, 
+      caption = "Partial Correlations (controlling for age and gender)")
+```
+
+---
+
+# Summary
+
+## Sample Characteristics
+
+```{r summary-stats}
+summary_stats <- data.frame(
+  Measure = c("Total participants", "Total trials", "Mean age (SD)", 
+              "Gender (% female)", "Mean SHAPS (SD)", "Mean FAS (SD)"),
+  Value = c(
+    length(unique(tbtDf$prolificID)),
+    nrow(tbtDf),
+    sprintf("%.1f (%.1f)", mean(summDf$Age, na.rm = TRUE), sd(summDf$Age, na.rm = TRUE)),
+    sprintf("%.1f%%", mean(summDf$Gender == "Woman (including Trans Female/Trans Woman)", na.rm = TRUE) * 100),
+    sprintf("%.1f (%.1f)", mean(summDf$SHAPS, na.rm = TRUE), sd(summDf$SHAPS, na.rm = TRUE)),
+    sprintf("%.1f (%.1f)", mean(summDf$FAS, na.rm = TRUE), sd(summDf$FAS, na.rm = TRUE))
+  )
+)
+
+kable(summary_stats, caption = "Sample Characteristics")
+```
+
+## Key Findings
+
+**Best Learning Model:**
+
+- Model: `r names(learning_fits$models)[which.min(learning_fits$results$AIC)]`
+- AIC: `r round(min(learning_fits$results$AIC), 2)`
+
+**Best Mental Health Model:**
+
+- Model: `r names(mh_fits$models)[which.min(mh_fits$results$AIC)]`
+- AIC: `r round(min(mh_fits$results$AIC), 2)`
+
+---
+
+# Session Information
+
+```{r session-info}
+sessionInfo()
+```
