@@ -29,7 +29,7 @@ This notebook provides a complete workflow for analyzing Learning x Motivation (
 
 - Data loading and preprocessing
 - Mixed model fitting and comparison
-- Publication-quality visualizations
+- Publication-quality visualizations (exact replications of original code)
 - Statistical analyses
 
 **To use this notebook:**
@@ -46,7 +46,7 @@ This notebook provides a complete workflow for analyzing Learning x Motivation (
 
 ```{r set-directory}
 # Change this to your data folder location
-setwd('C:/Users/calum.guinea/OneDrive - University College London/Documents/lxmAnalysisPub/data')
+setwd('/Users/calum/lxmAnalysisPub/')
 ```
 
 ## Install Packages (if needed)
@@ -97,7 +97,7 @@ load_and_preprocess_data <- function(exclude_low_performance = TRUE) {
   summDf <- read.csv("summaryFull.csv")
   
   # Rename ID column for consistency
-  summDf <- summDf %>% rename(prolificID = ParticipantId)
+  # summDf <- summDf %>% rename(prolificID = ParticipantId)
   
   # Convert valence to binary factor (0 = loss, 1 = reward)
   tbtDf <- tbtDf %>% mutate(valence = ifelse(valence == -1, 0, 1))
@@ -349,25 +349,35 @@ summary(mh_fits$best_model)
 
 Fixed effects show the average impact of each predictor across all participants.
 
-```{r fixed-effects-plot, fig.width=8, fig.height=6}
+```{r fixed-effects-plot, fig.width=9, fig.height=6}
 # Extract fixed effects from best learning model
-fixed_effects <- tidy(learning_fits$best_model, effects = "fixed", conf.int = TRUE)
+fixed_effects <- tidy(learning_fits$best_model, effects = "fixed", conf.int = TRUE, std.err = TRUE)
 
-# Create plot
-ggplot(fixed_effects, aes(x = reorder(term, estimate), y = estimate)) +
-  geom_point(size = 4, color = "steelblue") +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.2, linewidth = 1) +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
-  coord_flip() +
-  labs(x = "", y = "Beta estimate (log-odds)", 
-       title = "Fixed Effects from Best Learning Model") +
-  theme_minimal(base_size = 14) +
-  theme(panel.grid.major.y = element_blank())
-```
+# Convert term to factor and explicitly set the order to match the original data
+fixed_effects$term <- factor(fixed_effects$term, levels = fixed_effects$term)
 
-```{r fixed-effects-table}
-# Display as table
-kable(fixed_effects, digits = 3, caption = "Fixed Effects Estimates")
+# Create a vibrant color palette with unique colors for each bar
+vibrant_colors <- c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", "gold", "#A65628", "#F781BF", "#1B9E77")
+
+# Create the bar plot with ordered factors and color updates
+winMod_fixEffBar <- ggplot(fixed_effects, aes(x = term, y = estimate, fill = term)) +
+  geom_bar(stat = "identity", color = "black", width = 0.5, linewidth = 0.7) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.2, color = "black", linewidth = 0.8) +
+  scale_fill_manual(values = vibrant_colors) +
+  scale_x_discrete(labels = c("(Intercept)","Age","Gender Non-binary","Gender Not specified","Gender Woman","Post-tournament rating","Outcome magnitude","Effort level","Valence (effect of reward)")) +
+  scale_y_continuous(seq(-15,15,by = 2)) +
+  labs(
+    x = "Fixed Effects",
+    y = "Beta estimate") +
+  lims(
+    y = c(-15,15)
+  ) +
+  theme_minimal(base_size = 18) +
+  theme(
+    axis.text.x = element_text(size = 18, angle = 45, hjust = 1),
+    legend.position = "none"
+  )
+print(winMod_fixEffBar)
 ```
 
 ## Random Effects
@@ -378,33 +388,62 @@ Random effects capture individual differences in how predictors affect choice be
 # Extract random effects
 random_effects <- ranef(learning_fits$best_model)$prolificID
 
-# Create dataframe of random slopes
-random_slopes <- data.frame(
-  participant = rownames(random_effects),
-  outcome_prob = random_effects$postTournRat,
-  outcome_mag = random_effects$normOutMag,
-  effort = random_effects$effPrp,
-  valence = random_effects$valence1
-)
+# Assign random effects for each predictor
+outProbEstRfx <- setNames(as.data.frame(random_effects$postTournRat), "outProbRfx")
+effLvlRfx <- setNames(as.data.frame(random_effects$effPrp), "effRfx")
+outMagRfx <- setNames(as.data.frame(random_effects$normOutMag), "outMagRfx")
+valRfx <- setNames(as.data.frame(random_effects$valence1), "valRfx")
 ```
 
 ### Distribution of Random Slopes
 
-```{r random-slopes-plots, fig.width=10, fig.height=8}
-# Reshape for plotting
-slopes_long <- random_slopes %>%
-  pivot_longer(cols = -participant, names_to = "effect", values_to = "slope")
+```{r random-slopes-post-tournament, fig.width=4, fig.height=6}
+# Post-tournament rating slopes
+bin_count <- 20
+x_min <- min(outProbEstRfx)
+x_max <- max(outProbEstRfx)
+bin_width <- (x_max - x_min) / bin_count
 
-# Plot all distributions
-ggplot(slopes_long, aes(x = slope, fill = effect)) +
-  geom_histogram(bins = 30, color = "black", alpha = 0.7) +
-  geom_vline(xintercept = 0, linetype = "dashed", color = "red", linewidth = 1) +
-  facet_wrap(~ effect, scales = "free", ncol = 2) +
-  scale_fill_brewer(palette = "Set2") +
-  labs(x = "Random slope value", y = "Frequency",
-       title = "Distribution of Individual Differences in Model Effects") +
-  theme_minimal(base_size = 12) +
-  theme(legend.position = "none")
+hist_postTourn <- ggplot(outProbEstRfx, aes(x = random_effects$postTournRat)) + 
+  geom_histogram(binwidth = bin_width, fill = "#66C2A5", color = "black", linewidth = 0.9) +
+  scale_x_continuous(limits = c(x_min*1.3, x_max*1.3)) +
+  labs(
+    x = "Post-tourn. rat. slopes",
+    y = "Frequency") +
+  theme_minimal(base_size = 16)
+print(hist_postTourn)
+```
+
+```{r random-slopes-effort, fig.width=4, fig.height=6}
+# Effort level slopes
+x_min <- min(effLvlRfx)
+x_max <- max(effLvlRfx)
+bin_width <- (x_max - x_min) / bin_count
+
+hist_effort <- ggplot(effLvlRfx, aes(x = random_effects$effPrp)) + 
+  geom_histogram(binwidth = bin_width, fill = "#FC8D62", color = "black", linewidth = 0.9) +
+  scale_x_continuous(limits = c(x_min*1.3, x_max*1.3)) +
+  labs(
+    x = "Effort level slopes",
+    y = "Frequency") +
+  theme_minimal(base_size = 16)
+print(hist_effort)
+```
+
+```{r random-slopes-magnitude, fig.width=4, fig.height=6}
+# Outcome magnitude slopes
+x_min <- min(outMagRfx)
+x_max <- max(outMagRfx)
+bin_width <- (x_max - x_min) / bin_count
+
+hist_outMag <- ggplot(outMagRfx, aes(x = random_effects$normOutMag)) + 
+  geom_histogram(binwidth = bin_width, fill = "#FEE08B", color = "black", linewidth = 0.9) +
+  scale_x_continuous(limits = c(x_min*1.3, x_max*1.3)) +
+  labs(
+    x = "Outc. magn. slopes",
+    y = "Frequency") +
+  theme_minimal(base_size = 16)
+print(hist_outMag)
 ```
 
 ## Marginal Effects
@@ -472,18 +511,38 @@ if ("SHAPS_resc" %in% names(coef(mh_fits$best_model)$prolificID)) {
 ```{r shaps-interaction, fig.width=10, fig.height=6}
 if ("SHAPS_resc" %in% names(coef(mh_fits$best_model)$prolificID)) {
   
-  ggpredict(mh_fits$best_model, 
-            terms = c("postTournRat [all]", "SHAPS_resc [-1.5, 0, 1.5]")) %>%
-    plot() +
-    scale_color_manual(values = c("#26547c", "#ffd166", "#ef476f"),
-                       labels = c("Low SHAPS (-1.5 SD)", "Mean SHAPS", "High SHAPS (+1.5 SD)")) +
-    scale_fill_manual(values = c("#26547c", "#ffd166", "#ef476f"),
-                      labels = c("Low SHAPS (-1.5 SD)", "Mean SHAPS", "High SHAPS (+1.5 SD)")) +
-    labs(x = "Post-tournament rating", y = "P(accept)", 
-         color = "Anhedonia Level", fill = "Anhedonia Level",
-         title = "Interaction: How Anhedonia Modulates Learning Effects") +
-    theme_minimal(base_size = 14) +
-    theme(legend.position = "bottom")
+  # Create a grid of values for prediction
+  newdata <- expand.grid(
+    postTournRat = seq(0, 1, by = 0.1),
+    SHAPS_resc = c(-1.5, 0, 1.5),
+    Age_resc = 0,
+    Gender = "Woman (including Trans Female/Trans Woman)",
+    effPrp = mean(tbtDf$effPrp, na.rm = TRUE),
+    normOutMag = mean(tbtDf$normOutMag, na.rm = TRUE),
+    valence = levels(tbtDf$valence)[1]
+  )
+  
+  # Predict probabilities
+  newdata$predicted <- predict(mh_fits$best_model, newdata = newdata, type = "response", re.form = NA)
+  
+  # Convert SHAPS_resc to factor for better labeling
+  newdata$SHAPS_resc_factor <- factor(newdata$SHAPS_resc, 
+                                      levels = c(-1.5, 0, 1.5),
+                                      labels = c("Low", "Mean", "High"))
+  
+  # Create the plot
+  plot2 <- ggplot(newdata, aes(x = postTournRat, y = predicted, color = SHAPS_resc_factor)) +
+    geom_line(linewidth = 1.5) +
+    scale_color_manual(values = c("#ef476f", "#ffd166", "#26547c"),
+                       name = "SHAPS Score") +
+    labs(x = "Post-tournament Rating",
+         y = "Probability of Acceptance") +
+    theme_minimal(base_size = 18) +
+    theme(legend.position = "bottom",
+          panel.grid.minor = element_blank(),
+          legend.title = element_text(face = "bold"))
+  
+  print(plot2)
   
 } else {
   cat("SHAPS not included in best mental health model\n")
@@ -501,37 +560,63 @@ Shows how participants learned stimulus values over trials.
 ```{r learning-trajectories, fig.width=10, fig.height=12}
 if (file.exists("allEstsByStim.csv")) {
   
-  raw_estimates <- read.csv("allEstsByStim.csv")
+  # Read the raw estimates data
+  rawEstData <- read.csv("allEstsByStim.csv")
   
-  # Convert to long format
-  estimates_long <- raw_estimates %>%
-    rename(stimulus = 1) %>%
-    pivot_longer(cols = -stimulus, names_to = "trial", values_to = "estimate") %>%
-    mutate(trial = as.integer(gsub("X", "", trial)))
+  # Convert raw matrix to tibble
+  df <- as_tibble(rawEstData)
   
-  # Calculate mean and SE by stimulus and trial
-  estimates_summary <- estimates_long %>%
+  # Rename columns for clarity
+  colnames(df) <- c("stimulus", paste0("t", 1:(ncol(df)-1)))
+  
+  # Pivot to long format: one row per participant × trial
+  long_df <- df %>%
+    pivot_longer(
+      cols = starts_with("t"),
+      names_to = "trial",
+      names_prefix = "t",
+      names_transform = list(trial = as.integer),
+      values_to = "estimate"
+    )
+  
+  # Calculate mean and SE per stimulus × trial
+  summary_df <- long_df %>%
     group_by(stimulus, trial) %>%
-    summarize(
+    dplyr::summarize(
       mean_est = mean(estimate, na.rm = TRUE),
       se_est = sd(estimate, na.rm = TRUE) / sqrt(n()),
       .groups = "drop"
     )
   
   # Plot learning trajectories
-  ggplot(estimates_summary, 
-         aes(x = trial, y = mean_est, color = factor(stimulus))) +
-    geom_line(linewidth = 0.8) +
-    geom_point(size = 1.5) +
-    geom_ribbon(aes(ymin = mean_est - se_est, ymax = mean_est + se_est, 
-                    fill = factor(stimulus)), alpha = 0.2, color = NA) +
-    facet_wrap(~ stimulus, ncol = 2) +
+  p <- ggplot(summary_df, aes(x = trial, y = mean_est, color = factor(stimulus), group = factor(stimulus))) +
+    geom_line(linewidth = 0.5) +
+    geom_point(size = 1.2) +
+    geom_ribbon(aes(ymin = mean_est - se_est, ymax = mean_est + se_est, fill = factor(stimulus)), 
+                alpha = 0.4, color = NA) +
+    geom_hline(data = data.frame(
+      stimulus = 1:8,
+      h_line = ifelse(c(1:8) %in% c(1, 3, 5, 7), 0.25, 0.75)), 
+      aes(yintercept = h_line), linetype = "dashed", color = "black") +
+    scale_x_continuous(breaks = seq(1, 16, by = 3)) +
+    facet_wrap(~ stimulus, ncol = 2, labeller = labeller(stimulus = function(x) paste("Stimulus", x))) +
     ylim(0, 1) +
-    labs(x = "Trial", y = "Average rating",
-         title = "Learning Trajectories by Stimulus") +
-    theme_minimal(base_size = 14) +
-    theme(legend.position = "none",
-          strip.background = element_rect(fill = "lightgray"))
+    labs(
+      x = "Trial",
+      y = "Average Rating",
+      color = "Stimulus",
+      fill = "Stimulus"
+    ) +
+    theme_minimal(base_size = 20) +
+    theme(
+      legend.position = "bottom",
+      panel.background = element_rect(fill = "white", colour = "white"),
+      panel.grid.minor = element_blank(),
+      strip.background = element_rect(fill = "lightgray", color = NA),
+      strip.text = element_text(face = "bold")
+    )
+  
+  print(p)
   
 } else {
   cat("Learning trajectory data (allEstsByStim.csv) not found\n")
@@ -543,48 +628,131 @@ if (file.exists("allEstsByStim.csv")) {
 Shows how well participants learned each stimulus by the end of training.
 
 ```{r final-estimates, fig.width=10, fig.height=6}
-# Prepare data
-variables <- paste0("finLearningEst_", 1:8)
-estimates_df <- summDf %>%
-  select(prolificID, all_of(variables)) %>%
-  pivot_longer(cols = -prolificID, names_to = "stimulus", values_to = "estimate") %>%
+# Reorder variables: odd numbers (1,3,5,7) then even numbers (2,4,6,8)
+variables_to_mean <- c("finLearningEst_1", "finLearningEst_3", "finLearningEst_5", "finLearningEst_7",
+                       "finLearningEst_2", "finLearningEst_4", "finLearningEst_6", "finLearningEst_8")
+
+# Convert to long format with reordered variables
+df_long <- summDf %>%
+  tidyr::pivot_longer(cols = all_of(variables_to_mean), 
+                      names_to = "Variable", 
+                      values_to = "Value") %>%
   mutate(
-    stimulus = factor(stimulus, levels = variables),
-    valence = ifelse(grepl("[1357]", stimulus), "Loss", "Reward")
+    Variable = factor(Variable, levels = variables_to_mean),
+    Valence = case_when(
+      Variable %in% c("finLearningEst_1", "finLearningEst_2", "finLearningEst_3", "finLearningEst_4") ~ "Reward",
+      Variable %in% c("finLearningEst_5", "finLearningEst_6", "finLearningEst_7", "finLearningEst_8") ~ "Loss"
+    )
   )
 
-# Plot
-ggplot(estimates_df, aes(x = stimulus, y = estimate, fill = valence)) +
-  geom_boxplot(alpha = 0.6) +
-  geom_jitter(width = 0.2, alpha = 0.3, size = 0.5) +
-  scale_fill_manual(values = c("Loss" = "#FF1744", "Reward" = "#1AC71A")) +
-  scale_x_discrete(labels = paste("Alien", 1:8)) +
-  labs(x = "Stimulus", y = "Final learning estimate", fill = "Valence",
-       title = "Final Learning Estimates by Stimulus") +
-  theme_minimal(base_size = 14) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        legend.position = "bottom")
+# Custom x-axis labels
+custom_labels <- c("Alien 1", "Alien 3", "Alien 5", "Alien 7",
+                   "Alien 2", "Alien 4", "Alien 6", "Alien 8")
+
+# Bright red and green colors
+condition_colors <- c("Loss" = "#FF1744", "Reward" = "#1AC71A")
+
+# Create publication-ready boxplot with scatter points
+p <- ggplot(df_long, aes(x = Variable, y = Value, fill = Valence, color = Valence)) +
+  geom_boxplot(alpha = 0.5) +
+  geom_point(position = position_jitter(width = 0.1), alpha = 0.8, size = 1) +
+  scale_fill_manual(values = condition_colors) +
+  scale_color_manual(values = condition_colors) +
+  scale_x_discrete(labels = custom_labels) +
+  labs(x = "Stimulus", y = "Final learning estimate") +
+  theme_minimal(base_size = 18) +
+  ylim(0,1) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 18),
+    axis.text.y = element_text(size = 16),
+    axis.title = element_text(size = 18),
+    plot.title = element_text(size = 14, hjust = 0.5),
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom"
+  )
+print(p)
 ```
 
 ## Questionnaire Distributions
 
 ```{r questionnaire-distributions, fig.width=8, fig.height=6}
-# Prepare data
-questionnaires <- summDf %>%
-  select(prolificID, SHAPS, FAS) %>%
-  pivot_longer(cols = -prolificID, names_to = "questionnaire", values_to = "score")
+# Prepare data for SHAPS and FAS
+summ_long <- reshape2::melt(summDf, id.vars = "ParticipantId", measure.vars = c("SHAPS","FAS"))
 
-# Plot
-ggplot(questionnaires, aes(x = questionnaire, y = score, fill = questionnaire)) +
-  stat_halfeye(adjust = 0.5, width = 0.6, .width = 0, justification = -0.3, 
-               point_colour = NA) +
-  geom_boxplot(width = 0.25, outlier.shape = NA, alpha = 0.5) +
-  geom_jitter(width = 0.1, alpha = 0.3, size = 1) +
-  scale_fill_manual(values = c("SHAPS" = "#30c5d2", "FAS" = "#E4C2C6")) +
-  labs(x = "", y = "Score",
-       title = "Distribution of Questionnaire Scores") +
-  theme_minimal(base_size = 14) +
-  theme(legend.position = "none")
+# Create raincloud plot
+shapsFasRain <- ggplot(summ_long, aes(x = variable, y = value, fill = as.factor(variable))) + 
+  ggdist::stat_halfeye(
+    adjust = .5, 
+    width = .6, 
+    .width = 0, 
+    justification = -.3, 
+    point_colour = NA) +
+  geom_point(
+    inherit.aes = T,
+    aes(color = as.factor(variable)),
+    size = 1.5,
+    alpha = .2,
+    position = position_jitter(
+      seed = 1, width = .1
+    ) 
+  ) + 
+  geom_boxplot(
+    width = .22, 
+    outlier.shape = NA,
+    aes(fill = as.factor(variable))) +
+  coord_cartesian(xlim = c(1.2, 2.4), clip = "off") +
+  scale_fill_brewer(palette = "Spectral") +
+  labs(
+    x = "",
+    y = "Questionnaire score") +
+  theme_minimal(base_size = 18) +
+  theme(panel.background = element_rect(fill = "white", colour = "white")) +
+  theme(legend.position = "none") +
+  scale_x_discrete(labels = c("SHAPS" = "SHAPS", "FAS" = "FAS")) +
+  scale_fill_manual(values = c("SHAPS" = "#30c5d2","FAS" = "#E4C2C6")) +
+  scale_color_manual(values = c("SHAPS" = "#30c5d2","FAS" = "#E4C2C6"))
+
+print(shapsFasRain)
+```
+
+```{r transdiagnostic-distributions, fig.width=8, fig.height=6}
+# Prepare data for transdiagnostic factors
+summ_long <- reshape2::melt(summDf, id.vars = "ParticipantId", measure.vars = c("AD","SW","Compul"))
+
+# Create raincloud plot
+transxRain <- ggplot(summ_long, aes(x = variable, y = value, fill = as.factor(variable))) + 
+  ggdist::stat_halfeye(
+    adjust = .5, 
+    width = .6, 
+    .width = 0, 
+    justification = -.3, 
+    point_colour = NA) +
+  geom_point(
+    inherit.aes = T,
+    aes(color = as.factor(variable)),
+    size = 1.5,
+    alpha = .2,
+    position = position_jitter(
+      seed = 1, width = .1
+    ) 
+  ) + 
+  geom_boxplot(
+    width = .22, 
+    outlier.shape = NA,
+    aes(fill = as.factor(variable))) +
+  coord_cartesian(xlim = c(1.2, 3.4), clip = "off") +
+  scale_fill_brewer(palette = "Spectral") +
+  labs(
+    x = "",
+    y = "Factor loading") +
+  theme_minimal(base_size = 18) +
+  theme(panel.background = element_rect(fill = "white", colour = "white")) +
+  theme(legend.position = "none") +
+  scale_x_discrete(labels = c("AD" = "AD", "SW" = "SW", "Compul" = "Compul")) +
+  scale_fill_manual(values = c("AD" = "#84ffc9","SW" = "#aab2ff", "Compul" = "#eca0ff")) +
+  scale_color_manual(values = c("AD" = "#84ffc9","SW" = "#aab2ff", "Compul" = "#eca0ff"))
+
+print(transxRain)
 ```
 
 ---
@@ -655,9 +823,8 @@ if ("percAccept" %in% names(summDf)) {
   ))
 }
 
-# Display results
-kable(pcor_results, digits = 4, 
-      caption = "Partial Correlations (controlling for age and gender)")
+print(pcor_results)
+
 ```
 
 ---
@@ -680,22 +847,8 @@ summary_stats <- data.frame(
   )
 )
 
-kable(summary_stats, caption = "Sample Characteristics")
+print(summary_stats)
 ```
-
-## Key Findings
-
-**Best Learning Model:**
-
-- Model: `r names(learning_fits$models)[which.min(learning_fits$results$AIC)]`
-- AIC: `r round(min(learning_fits$results$AIC), 2)`
-
-**Best Mental Health Model:**
-
-- Model: `r names(mh_fits$models)[which.min(mh_fits$results$AIC)]`
-- AIC: `r round(min(mh_fits$results$AIC), 2)`
-
----
 
 # Session Information
 
