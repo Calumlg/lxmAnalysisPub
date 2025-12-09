@@ -1,6 +1,6 @@
 ---
-title: "Learning x Motivation Analysis"
-author: "Your Name"
+title: "Learning x Motivation Main Analysis and Figures"
+author: "Calum Guinea"
 date: "`r Sys.Date()`"
 output:
   html_document:

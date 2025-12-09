@@ -1,6 +1,6 @@
 ---
-title: "LxM Publication Plots"
-author: "Your Name"
+title: "LxM Supplementary Figures"
+author: "Calum Guinea"
 date: "`r Sys.Date()`"
 output:
   html_document:
@@ -528,6 +528,66 @@ transxRain <- ggplot(summ_long, aes(x = variable, y = value,
                                 "Compul" = "#eca0ff"))
 
 print(transxRain)
+```
+
+## Supplementary Figure 6 - SHAPS Effects on Effort Acceptance
+
+### SHAPS × Effort Level Interaction
+
+Shows how anhedonia (SHAPS) moderates the effect of effort level on acceptance probability. Three lines represent low (-1.5 SD), mean (0), and high (3 SD) SHAPS scores.
+
+```{r supp-fig-6a-shaps-effort, fig.width=10, fig.height=6}
+# Generate marginal effects predictions for SHAPS × effort interaction
+# Shows predicted probability of accepting effort at different SHAPS levels
+# type = "fe" means fixed effects only (population-level predictions)
+mhMod_SHAPS_ptr_plot <- ggpredict(mh_fits$best_model, 
+                                  terms = c("effPrp [all]",           # Range of effort levels
+                                           "SHAPS_resc [-1.5, 0, 3]"), # Low, mean, high SHAPS
+                                  type = "fe") %>%
+  plot() +
+  # Custom color scheme for SHAPS levels
+  scale_fill_manual(values = c("#F9AED3",      # Low SHAPS (pink)
+                               "#8AC926",      # Mean SHAPS (green)
+                               "#4A90E0")) +   # High SHAPS (blue)
+  scale_colour_manual(values = c("#F9AED3", "#8AC926", "#4A90E0")) +
+  labs(
+    title = "",
+    x = "Effort level",
+    y = "p(accept)",
+    colour = "SHAPS"
+  ) +
+  theme_minimal(base_size = 18) +
+  theme(legend.position = "right")
+
+print(mhMod_SHAPS_ptr_plot)
+```
+
+### SHAPS Main Effect on Acceptance Probability
+
+Shows the main effect of anhedonia on overall effort acceptance probability, controlling for all other variables in the model.
+
+```{r supp-fig-6b-shaps-main-effect, fig.width=10, fig.height=6}
+# Generate marginal effects for SHAPS main effect
+# Shows how acceptance probability changes across the full range of SHAPS scores
+marginal_effects <- ggpredict(mh_fits$best_model, terms = "SHAPS_resc [all]")
+
+# Create line plot with confidence ribbon
+# Pink color emphasizes the anhedonia measure
+mhWinMod_SHAPS_pAccept_plot <- ggplot(marginal_effects, aes(x = x, y = predicted)) +
+  # Main effect line
+  geom_line(color = "#F9AED3", linewidth = 2) +
+  # 95% confidence interval ribbon
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), 
+              alpha = 0.2,           # Transparency for ribbon
+              color = "#F9AED3",     # Ribbon border color
+              fill = "#F9AED3") +    # Ribbon fill color
+  labs(
+    x = "SHAPS score (z-scored)",
+    y = "p(accept)"
+  ) +
+  theme_minimal(base_size = 18)
+
+print(mhWinMod_SHAPS_pAccept_plot)
 ```
 
 ---
