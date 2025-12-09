@@ -1068,10 +1068,12 @@ Shows how anhedonia (SHAPS) moderates the effect of effort level on acceptance p
 # Generate marginal effects predictions for SHAPS × effort interaction
 # Shows predicted probability of accepting effort at different SHAPS levels
 # type = "fe" means fixed effects only (population-level predictions)
-mhMod_SHAPS_ptr_plot <- ggpredict(mh_fits$best_model, 
+
+mhmod <- mh_fits$best_model
+mhMod_SHAPS_ptr_plot <- ggpredict(mhmod, 
                                   terms = c("effPrp [all]",           # Range of effort levels
                                            "SHAPS_resc [-1.5, 0, 3]"), # Low, mean, high SHAPS
-                                  type = "fe") %>%
+                                  type = "fixed") %>%
   plot() +
   # Custom color scheme for SHAPS levels
   scale_fill_manual(values = c("#F9AED3",      # Low SHAPS (pink)
