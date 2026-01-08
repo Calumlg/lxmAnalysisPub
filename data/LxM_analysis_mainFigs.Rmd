@@ -46,7 +46,7 @@ This notebook provides a complete workflow for analyzing Learning x Motivation (
 
 ```{r set-directory}
 # Change this to your data folder location
-setwd('/Users/calum/lxmAnalysisPub/')
+setwd('C:/Users/calum/desktop')
 ```
 
 ## Install Packages (if needed)
@@ -73,7 +73,7 @@ library(ggpubr)
 library(ppcor)
 library(corrplot)
 library(reshape2)
-library(knitr)
+# library(knitr)
 library(DT)
 ```
 
@@ -97,7 +97,7 @@ load_and_preprocess_data <- function(exclude_low_performance = TRUE) {
   summDf <- read.csv("summaryFull.csv")
   
   # Rename ID column for consistency
-  # summDf <- summDf %>% rename(prolificID = ParticipantId)
+  summDf <- summDf %>% rename(prolificID = ParticipantId)
   
   # Convert valence to binary factor (0 = loss, 1 = reward)
   tbtDf <- tbtDf %>% mutate(valence = ifelse(valence == -1, 0, 1))
@@ -307,7 +307,7 @@ learning_fits <- fit_model_set(tbtDf, learning_models, "learning measure models"
 ### Model Comparison - Learning Models
 
 ```{r learning-comparison-table}
-datatable(learning_fits$results, 
+DT::datatable(learning_fits$results, 
           caption = "Learning Models Comparison",
           options = list(pageLength = 10))
 ```
@@ -345,7 +345,7 @@ mh_fits <- fit_model_set(tbtDf, mental_health_models, "mental health models")
 ### Model Comparison - Mental Health Models
 
 ```{r mh-comparison-table}
-datatable(mh_fits$results, 
+DT::datatable(mh_fits$results, 
           caption = "Mental Health Models Comparison",
           options = list(pageLength = 10))
 ```
@@ -907,7 +907,7 @@ print(p)
 
 ```{r questionnaire-distributions, fig.width=8, fig.height=6}
 # Prepare data for SHAPS and FAS
-summ_long <- reshape2::melt(summDf, id.vars = "ParticipantId", measure.vars = c("SHAPS","FAS"))
+summ_long <- reshape2::melt(summDf, id.vars = "prolificID", measure.vars = c("SHAPS","FAS"))
 
 # Create raincloud plot
 shapsFasRain <- ggplot(summ_long, aes(x = variable, y = value, fill = as.factor(variable))) + 
@@ -948,7 +948,7 @@ print(shapsFasRain)
 
 ```{r transdiagnostic-distributions, fig.width=8, fig.height=6}
 # Prepare data for transdiagnostic factors
-summ_long <- reshape2::melt(summDf, id.vars = "ParticipantId", measure.vars = c("AD","SW","Compul"))
+summ_long <- reshape2::melt(summDf, id.vars = "prolificID", measure.vars = c("AD","SW","Compul"))
 
 # Create raincloud plot
 transxRain <- ggplot(summ_long, aes(x = variable, y = value, fill = as.factor(variable))) + 

@@ -16,7 +16,7 @@ for clean = 1:2
         dString = 'full/';
     end
     
-    cd('/Users/calum/lxmAnalysisPub/data'); % add your own path
+    cd('C:/Users/calum/desktop/'); % add your own path
     data = readtable('choice_trialByTrial.csv');
     
 %% organize the data
