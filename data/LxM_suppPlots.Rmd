@@ -98,18 +98,6 @@ load_and_preprocess_data <- function(exclude_low_performance = TRUE) {
   tbtDf <- tbtDf %>% mutate(valence = ifelse(valence == -1, 0, 1))
   tbtDf$valence <- as.factor(tbtDf$valence)
   
-  # Scale continuous predictors (mean-centered and standardized)
-  # Learning fidelity measures
-  tbtDf$postLearnRat_resc <- scale(tbtDf$postLearnRat)
-  tbtDf$postTournRat_resc <- scale(tbtDf$postTournRat)
-  tbtDf$postEffortRat_resc <- scale(tbtDf$postEffortRat)
-  tbtDf$meanEstByStim_resc <- scale(tbtDf$meanEstByStim)
-  tbtDf$finLearningEst_resc <- scale(tbtDf$finLearningEst)
-  
-  # Decision variables
-  tbtDf$effDiscEV <- scale(tbtDf$effDiscEV)
-  tbtDf$alienEV <- scale(tbtDf$alienEV)
-  
   # Demographics
   tbtDf$Age_resc <- scale(tbtDf$Age)
   tbtDf$Sex <- as.factor(tbtDf$Sex)
@@ -135,15 +123,6 @@ load_and_preprocess_data <- function(exclude_low_performance = TRUE) {
     tbtDf <- tbtDf[tbtDf$ovrperc > threshold, ]
     summDf <- summDf[summDf$ovrperc > threshold, ]
   }
-  
-  # Create expected value difference variable
-  tbtDf <- tbtDf %>%
-    mutate(evDiff = ifelse(
-      outMag < 0,
-      (abs(outMag) * outProb) - (abs(outMag) * 1),
-      (abs(outMag) * outProb) - (abs(outMag) * 0)
-    ))
-  tbtDf$evDiff <- abs(tbtDf$evDiff)
   
   return(list(tbtDf = tbtDf, summDf = summDf))
 }
