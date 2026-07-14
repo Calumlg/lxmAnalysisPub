@@ -1,0 +1,556 @@
+---
+title: "LxM Supplementary Figures"
+author: "Calum Guinea"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 10,
+  fig.height = 6,
+  dpi = 300
+)
+```
+
+# Overview
+
+This notebook generates all publication-ready figures from the LxM (Learning × Motivation) manuscript. Each figure is clearly labeled and organized by manuscript section (main figures and supplementary figures).
+
+**To use this notebook:** keep this file, `data/`, and `LxM_load_and_preprocess.R` together, then click "Knit". No paths to edit.
+
+```
+your-folder/
+├── LxM_suppPlots.Rmd
+├── LxM_load_and_preprocess.R
+└── data/
+    ├── allMeanTbtEst.csv
+    └── allEstsByStim.csv
+```
+
+---
+
+# Setup
+
+## Locate the Data Folder
+
+```{r locate-data-folder}
+# Folder holding the raw CSVs, next to this .Rmd file
+data_dir <- file.path("data")
+required_files <- c("allMeanTbtEst.csv", "allEstsByStim.csv",
+                     "choice_trialByTrial.csv", "summaryFull.csv")
+
+# Fail early with a clear message if a file is missing, rather than a
+# cryptic error later in the notebook
+missing_files <- required_files[!file.exists(file.path(data_dir, required_files))]
+if (length(missing_files) > 0) {
+  stop("Missing data file(s): ", paste(missing_files, collapse = ", "),
+       "\nExpected them in: ", normalizePath(data_dir, mustWork = FALSE))
+}
+if (!file.exists("LxM_load_and_preprocess.R")) {
+  stop("Missing LxM_load_and_preprocess.R - it should sit next to this .Rmd file")
+}
+```
+
+## Install Packages (if needed)
+
+Run this chunk once if you need to install packages:
+
+```{r install-packages, eval=FALSE}
+install.packages(c("dplyr", "tidyr", "ggplot2", "ggdist", 
+                   "ggbeeswarm", "cowplot", "ggpubr", "RColorBrewer", 
+                   "reshape2", "colorspace", "ggsci", "corrplot"))
+```
+
+## Load Required Packages
+
+```{r load-packages}
+library(dplyr)       # Data manipulation
+library(tidyr)       # Data tidying
+library(ggplot2)     # Plotting
+library(ggdist)      # Distribution visualizations
+library(ggbeeswarm)  # Beeswarm plots
+library(cowplot)     # Publication-ready themes
+library(ggpubr)      # Publication-ready plots
+library(RColorBrewer)# Color palettes
+library(reshape2)    # Data reshaping
+library(colorspace)  # Color utilities
+library(ggsci)       # Scientific journal color palettes
+library(corrplot)    # Correlation matrix plots
+```
+
+---
+
+# Data Loading and Preprocessing
+
+## Load Preprocessing Script
+
+```{r load-preprocessing-script}
+# Source the preprocessing script
+# This script contains the lxm_load_preprocess() function
+source('LxM_load_and_preprocess.R')
+```
+
+## Load and Preprocess Data
+
+```{r load-data}
+# Load and preprocess the data
+# clean = 1: Apply data cleaning
+# tourn_remove = 1: Remove participants with poor tournament performance
+data <- lxm_load_preprocess(clean = 1, tourn_remove = 1)
+
+# Extract trial-by-trial and summary dataframes
+tbtDf <- data$tbtDf    # Trial-by-trial data
+summDf <- data$summDf  # Summary statistics per participant
+```
+
+---
+
+# Main Manuscript Figures
+
+## Figure 2 - Learning Trajectories
+
+Shows how participants learned stimulus outcome probabilities across trials during the learning phase.
+
+```{r figure-2-learning-trajectories, fig.width=10, fig.height=12}
+# Read raw estimation data files
+# allMeanTbtEst.csv contains mean estimates across participants
+# allEstsByStim.csv contains individual participant estimates by stimulus
+data_means <- read.csv(file.path(data_dir, "allMeanTbtEst.csv"), header = FALSE)
+rawEstData <- read.csv(file.path(data_dir, "allEstsByStim.csv"), header = FALSE)
+
+# Convert raw matrix to tibble for easier manipulation
+df <- as_tibble(rawEstData)
+
+# Rename columns for clarity
+# First column is stimulus ID, remaining columns are trials (t1, t2, ...)
+colnames(df) <- c("stimulus", paste0("t", 1:(ncol(df)-1)))
+
+# Pivot to long format: one row per participant × trial
+# This makes it easier to calculate statistics and plot
+long_df <- df %>%
+  pivot_longer(
+    cols = starts_with("t"),          # Select all trial columns
+    names_to = "trial",                # New column for trial number
+    names_prefix = "t",                # Remove "t" prefix
+    names_transform = list(trial = as.integer),  # Convert to integer
+    values_to = "estimate"             # Values go into "estimate" column
+  )
+
+# Calculate mean and standard error per stimulus × trial
+# These will be used for the line plot and confidence ribbons
+summary_df <- long_df %>%
+  group_by(stimulus, trial) %>%
+  summarize(
+    mean_est = mean(estimate, na.rm = TRUE),           # Average estimate
+    se_est = sd(estimate, na.rm = TRUE) / sqrt(n()),   # Standard error
+    .groups = "drop"
+  )
+
+# Create the learning trajectory plot
+# Each stimulus gets its own panel showing learning over trials
+p <- ggplot(summary_df, aes(x = trial, y = mean_est, 
+                            color = factor(stimulus), 
+                            group = factor(stimulus))) +
+  # Add line connecting trial means
+  geom_line(linewidth = 0.5) +
+  # Add points for each trial
+  geom_point(size = 1.2) +
+  # Add shaded confidence ribbon (mean ± SE)
+  geom_ribbon(aes(ymin = mean_est - se_est, ymax = mean_est + se_est, 
+                  fill = factor(stimulus)), 
+              alpha = 0.4, color = NA) +
+  # Add horizontal dashed lines showing true outcome probabilities
+  # Stimuli 1,3,5,7 have p=0.25; Stimuli 2,4,6,8 have p=0.75
+  geom_hline(data = data.frame(
+    stimulus = 1:8,
+    h_line = ifelse(c(1:8) %in% c(1, 3, 5, 7), 0.25, 0.75)), 
+    aes(yintercept = h_line), 
+    linetype = "dashed", color = "black") +
+  # Show trial numbers every 3 trials
+  scale_x_continuous(breaks = seq(1, 16, by = 3)) +
+  # Create separate panel for each stimulus
+  facet_wrap(~ stimulus, ncol = 2, 
+             labeller = labeller(stimulus = function(x) paste("Stimulus", x))) +
+  # Set y-axis limits (probabilities range from 0 to 1)
+  ylim(0, 1) +
+  labs(
+    x = "Trial",
+    y = "Average Rating",
+    color = "Stimulus",
+    fill = "Stimulus"
+  ) +
+  theme_minimal(base_size = 20) +
+  theme(
+    legend.position = "bottom",
+    panel.background = element_rect(fill = "white", colour = "white"),
+    panel.grid.minor = element_blank(),
+    strip.background = element_rect(fill = "lightgray", color = NA),
+    strip.text = element_text(face = "bold")
+  )
+
+print(p)
+```
+
+---
+
+# Supplementary Figures
+
+## Supplementary Figure 1 - Maximum Voluntary Contraction (MVC)
+
+Shows each participant's maximum key presses per second. The horizontal line at 19 indicates the minimum threshold used to exclude participants with insufficient effort capacity.
+
+```{r supp-fig-1-mvc, fig.width=10, fig.height=6}
+# Create bar plot showing MVC for each participant
+# MVC = Maximum Voluntary Contraction (max key presses per second)
+mvcBar <- ggplot(summDf, aes(x = prolificID, y = mvc, fill = "#ff6201")) +
+  # Create bar for each participant
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
+  # Add horizontal line showing minimum threshold (19 presses)
+  geom_hline(yintercept = 19, color = "black", linetype = "solid", linewidth = 1.25) +
+  scale_fill_manual(values = "#ff6201") +
+  labs(
+    x = "Participants",
+    y = "Maximum key presses") +
+  theme_minimal(base_size = 18) +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_blank(),              # Hide participant IDs
+    panel.background = element_rect(fill = "white", colour = "white"),
+    axis.ticks.x = element_blank(),
+    axis.text.x.bottom = element_blank()) +
+  ylim(0, 100)  # Set y-axis limits
+
+print(mvcBar)
+```
+
+## Supplementary Figure 2 - Mean Post-Task Estimates
+
+Raincloud plots showing distribution of mean post-task probability estimates across three timepoints: post-learning, post-tournament, and post-effort.
+
+```{r supp-fig-2-post-task-estimates, fig.width=10, fig.height=6}
+# Prepare data for plotting
+# Select three post-task estimate measures and convert to long format
+summ_long <- reshape2::melt(summDf, id.vars = "prolificID", 
+                             measure.vars = c("postLearnMean_1", 
+                                             "postTournMean_1", 
+                                             "postEffortMean_1"))
+
+# Create raincloud plot (combination of violin, boxplot, and points)
+# This shows the full distribution at each timepoint
+meanPostEstsRain <- ggplot(summ_long, aes(x = variable, y = value, 
+                                          fill = as.factor(variable))) + 
+  # Add half-violin plot showing distribution density
+  ggdist::stat_halfeye(
+    adjust = .5,           # Bandwidth adjustment for smoothing
+    width = .6,            # Width of the violin
+    .width = 0,            # Don't show interval
+    justification = -.3,   # Position relative to box
+    point_colour = NA) +   # No point in violin
+  # Add boxplot showing median and quartiles
+  geom_boxplot(
+    width = .25,           # Width of boxplot
+    outlier.shape = NA,    # Hide outliers (shown as points instead)
+    aes(fill = as.factor(variable))) +
+  # Add individual data points with jitter
+  geom_point(
+    inherit.aes = T,
+    aes(color = as.factor(variable)),
+    size = 1.5,
+    alpha = .2,            # Transparency to show overlapping points
+    position = position_jitter(seed = 1, width = .1)) + 
+  # Adjust plot area to accommodate violin
+  coord_cartesian(xlim = c(1.2, 3.2), clip = "off") +
+  scale_fill_brewer(palette = "Spectral") +
+  labs(y = "Mean post-task estimates (as proportions)") +
+  theme_minimal(base_size = 18) +
+  theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    legend.position = "none",
+    axis.title.x = element_blank()) +
+  # Custom x-axis labels
+  scale_x_discrete(labels = c("postLearnMean_1" = "Post-learning", 
+                              "postTournMean_1" = "Post-tournament",
+                              "postEffortMean_1" = "Post-effort")) +
+  # Custom color scheme for each timepoint
+  scale_fill_manual(values = c("postLearnMean_1" = "#6dd3ce",
+                               "postTournMean_1" = "#c8e9a0",
+                               "postEffortMean_1" = "#f7a278")) +
+  scale_color_manual(values = c("postLearnMean_1" = "#6dd3ce",
+                                "postTournMean_1" = "#c8e9a0",
+                                "postEffortMean_1" = "#f7a278")) +
+  # Set y-axis to show probabilities from 0 to 1
+  scale_y_continuous(
+    breaks = c(0, 0.25, 0.5, 0.75, 1),
+    labels = c("0", "0.25", "0.5", "0.75", "1"))
+
+print(meanPostEstsRain)
+```
+
+## Supplementary Figure 3 - Tournament Performance
+
+Raincloud plots showing accuracy across different tournament trial types: overall, reward-only, loss-only, approach, and avoid trials.
+
+```{r supp-fig-3-tournament-performance, fig.width=10, fig.height=6}
+# Prepare tournament performance data
+# Five measures of tournament accuracy across different trial types
+summ_long <- reshape2::melt(summDf, id.vars = "prolificID", 
+                             measure.vars = c("ovrperc",      # Overall accuracy
+                                             "rewOvrPerc",    # Reward trials only
+                                             "lossOvrPerc",   # Loss trials only
+                                             "appPerc",       # Approach trials
+                                             "avPerc"))       # Avoid trials
+
+# Create raincloud plot
+tournAccRain <- ggplot(summ_long, aes(x = variable, y = value, 
+                                      fill = as.factor(variable))) + 
+  # Half-violin showing distribution
+  ggdist::stat_halfeye(
+    adjust = .5, 
+    width = .6, 
+    .width = 0, 
+    justification = -.3, 
+    point_colour = NA) +
+  # Individual data points
+  geom_point(
+    inherit.aes = T,
+    aes(color = as.factor(variable)),
+    size = 1.5,
+    alpha = .5,
+    position = position_jitter(seed = 1, width = .1)) + 
+  # Boxplot overlay
+  geom_boxplot(
+    width = .25, 
+    outlier.shape = NA,
+    aes(fill = as.factor(variable))) +
+  coord_cartesian(xlim = c(1.2, 5.4), clip = "off") +
+  scale_fill_brewer(palette = "Spectral") +
+  labs(
+    y = "Tournament performance (as %)",
+    x = "Accuracy") +
+  theme_minimal(base_size = 18) +
+  theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5, size = 16),
+    axis.title.y = element_text(size = 18),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 18),
+    axis.text.y = element_text(size = 18)) +
+  # Custom colors for each trial type
+  scale_fill_manual(values = c("ovrperc" = "#fb8fa4",
+                               "rewOvrPerc" = "#7dbedf",
+                               "lossOvrPerc" = "#f7cd4d",
+                               "appPerc" = "#91c579",
+                               "avPerc" = "#d2aecc")) +
+  scale_color_manual(values = c("ovrperc" = "#fb8fa4",
+                                "rewOvrPerc" = "#7dbedf",
+                                "lossOvrPerc" = "#f7cd4d",
+                                "appPerc" = "#91c579",
+                                "avPerc" = "#d2aecc")) +
+  # Custom x-axis labels
+  scale_x_discrete(labels = c("ovrperc" = "Overall", 
+                              "rewOvrPerc" = "Reward-only", 
+                              "lossOvrPerc" = "Loss-only", 
+                              "appPerc" = "Approach", 
+                              "avPerc" = "Avoid"))
+
+print(tournAccRain)
+```
+
+## Supplementary Figure 4 - Correlation Matrix for Learning Measures
+
+Correlation matrix showing relationships among five individualized learning measures. This helps validate that different learning measures capture similar underlying constructs.
+
+```{r supp-fig-4-correlation-matrix, fig.width=9, fig.height=6}
+# Compute the mean for each learning measure, grouped by participant
+# This creates one value per participant per measure
+rat_means <- tbtDf %>%
+  group_by(prolificID) %>%
+  summarise(
+    plrMean = mean(postLearnRat, na.rm = TRUE),      # Post-learning rating
+    ptrMean = mean(postTournRat, na.rm = TRUE),      # Post-tournament rating
+    perMean = mean(postEffortRat, na.rm = TRUE),     # Post-effort rating
+    fleMean = mean(as.numeric(finLearningEst), na.rm = TRUE),  # Final learning estimate
+    mebsMean = mean(meanEstByStim, na.rm = TRUE)     # Mean trial-by-trial estimate
+  )
+
+# Convert to dataframe
+rat_means <- as.data.frame(rat_means)
+
+# Select only the learning measure columns (exclude prolificID)
+corr_data <- rat_means[, c("plrMean", "ptrMean", "perMean", "fleMean", "mebsMean")]
+
+# Compute Pearson correlation matrix
+# use = "pairwise.complete.obs" handles missing data
+cor_matrix <- cor(corr_data, use = "pairwise.complete.obs")
+
+# Create readable labels for the correlation matrix
+custom_labels <- c("Post Learning Mean", 
+                   "Post Tourn. Mean", 
+                   "Post Effort Mean", 
+                   "Final Learning Estimate", 
+                   "Mean tbt estimate")
+
+# Apply custom labels to matrix
+rownames(cor_matrix) <- custom_labels
+colnames(cor_matrix) <- custom_labels
+
+# Function to compute p-values for correlations
+# Tests significance of each pairwise correlation
+cor_pvalues <- function(mat) {
+  n <- ncol(mat)
+  p_mat <- matrix(NA, n, n)
+  rownames(p_mat) <- colnames(mat)
+  colnames(p_mat) <- colnames(mat)
+  
+  # Test each unique pair
+  for (i in 1:(n-1)) {
+    for (j in (i+1):n) {
+      test <- cor.test(mat[, i], mat[, j], 
+                      use = "pairwise.complete.obs", 
+                      method = "pearson")
+      p_mat[i, j] <- test$p.value
+      p_mat[j, i] <- test$p.value  # Matrix is symmetric
+    }
+  }
+  
+  diag(p_mat) <- 0  # Set diagonal to 0
+  return(p_mat)
+}
+
+# Compute p-values for significance testing
+p_matrix <- cor_pvalues(corr_data)
+
+# Generate the correlation matrix heatmap
+# Shows lower triangle only (matrix is symmetric)
+# Color gradient: blue (negative) → white (zero) → red (positive)
+corrplot(cor_matrix, 
+         method = "color",                      # Use color squares
+         type = "lower",                        # Show lower triangle only
+         col = colorRampPalette(c("blue", "white", "red"))(200),  # Color gradient
+         tl.col = "black",                      # Text label color
+         tl.cex = 0.8,                         # Text label size
+         tl.srt = 45,                          # Text label rotation
+         addCoef.col = "black")                # Add correlation coefficients
+```
+
+## Supplementary Figure 5 - Questionnaire Distributions
+
+Raincloud plots showing distributions of questionnaire scores: SHAPS (anhedonia), FAS (fatigue), and transdiagnostic factors (Anxious-Depression, Social Withdrawal, Compulsivity).
+
+### SHAPS and FAS
+
+```{r supp-fig-5a-shaps-fas, fig.width=8, fig.height=6}
+# Prepare SHAPS and FAS data
+summ_long <- reshape2::melt(summDf, id.vars = "prolificID", 
+                             measure.vars = c("SHAPS", "FAS"))
+
+# Create raincloud plot for SHAPS and FAS
+shapsFasRain <- ggplot(summ_long, aes(x = variable, y = value, 
+                                      fill = as.factor(variable))) + 
+  # Half-violin distribution
+  ggdist::stat_halfeye(
+    adjust = .5, 
+    width = .6, 
+    .width = 0, 
+    justification = -.3, 
+    point_colour = NA) +
+  # Individual points with jitter
+  geom_point(
+    inherit.aes = T,
+    aes(color = as.factor(variable)),
+    size = 1.5,
+    alpha = .2,
+    position = position_jitter(seed = 1, width = .1)) + 
+  # Boxplot overlay
+  geom_boxplot(
+    width = .22, 
+    outlier.shape = NA,
+    aes(fill = as.factor(variable))) +
+  coord_cartesian(xlim = c(1.2, 2.4), clip = "off") +
+  scale_fill_brewer(palette = "Spectral") +
+  labs(
+    x = "",
+    y = "Questionnaire score") +
+  theme_minimal(base_size = 18) +
+  theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    legend.position = "none") +
+  scale_x_discrete(labels = c("SHAPS" = "SHAPS", "FAS" = "FAS")) +
+  # Custom colors: cyan for SHAPS, pink for FAS
+  scale_fill_manual(values = c("SHAPS" = "#30c5d2", "FAS" = "#E4C2C6")) +
+  scale_color_manual(values = c("SHAPS" = "#30c5d2", "FAS" = "#E4C2C6"))
+
+print(shapsFasRain)
+```
+
+### Transdiagnostic Factors
+
+```{r supp-fig-5b-transdiagnostic, fig.width=8, fig.height=6}
+# Prepare transdiagnostic factor data
+# AD = Anxious-Depression
+# SW = Social Withdrawal
+# Compul = Compulsivity
+summ_long <- reshape2::melt(summDf, id.vars = "prolificID", 
+                             measure.vars = c("AD", "SW", "Compul"))
+
+# Create raincloud plot for transdiagnostic factors
+transxRain <- ggplot(summ_long, aes(x = variable, y = value, 
+                                    fill = as.factor(variable))) + 
+  # Half-violin distribution
+  ggdist::stat_halfeye(
+    adjust = .5, 
+    width = .6, 
+    .width = 0, 
+    justification = -.3, 
+    point_colour = NA) +
+  # Individual points with jitter
+  geom_point(
+    inherit.aes = T,
+    aes(color = as.factor(variable)),
+    size = 1.5,
+    alpha = .2,
+    position = position_jitter(seed = 1, width = .1)) + 
+  # Boxplot overlay
+  geom_boxplot(
+    width = .22, 
+    outlier.shape = NA,
+    aes(fill = as.factor(variable))) +
+  coord_cartesian(xlim = c(1.2, 3.4), clip = "off") +
+  scale_fill_brewer(palette = "Spectral") +
+  labs(
+    x = "",
+    y = "Factor loading") +
+  theme_minimal(base_size = 18) +
+  theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    legend.position = "none") +
+  scale_x_discrete(labels = c("AD" = "AD", "SW" = "SW", "Compul" = "Compul")) +
+  # Custom colors for each factor
+  scale_fill_manual(values = c("AD" = "#84ffc9",      # Green
+                               "SW" = "#aab2ff",       # Blue
+                               "Compul" = "#eca0ff")) + # Purple
+  scale_color_manual(values = c("AD" = "#84ffc9", 
+                                "SW" = "#aab2ff", 
+                                "Compul" = "#eca0ff"))
+
+print(transxRain)
+```
+
+---
+
+# Session Information
+
+```{r session-info}
+sessionInfo()
+```
