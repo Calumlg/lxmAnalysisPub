@@ -708,7 +708,7 @@ if ("SHAPS_resc" %in% names(coef(mh_fits$best_model)$prolificID)) {
   # This generates combinations of predictor values to visualize the interaction
   newdata <- expand.grid(
     postTournRat = seq(0, 1, by = 0.1),          # Range of post-tournament ratings
-    SHAPS_resc = c(-1.5, 0, 1.5),                # Low, mean, and high anhedonia
+    SHAPS_resc = c(-1, 0, 1),                # Low, mean, and high anhedonia
     Age_resc = 0,                                 # Set to mean (since rescaled)
     Gender = "Woman (including Trans Female/Trans Woman)",  # Most common category
     effPrp = mean(tbtDf$effPrp, na.rm = TRUE),   # Average effort level
@@ -722,7 +722,7 @@ if ("SHAPS_resc" %in% names(coef(mh_fits$best_model)$prolificID)) {
   
   # Convert SHAPS_resc to factor for better labeling in plots
   newdata$SHAPS_resc_factor <- factor(newdata$SHAPS_resc, 
-                                      levels = c(-1.5, 0, 1.5),
+                                      levels = c(-1, 0, 1),
                                       labels = c("Low", "Mean", "High"))
   
   # Create line plot showing interaction
@@ -732,7 +732,7 @@ if ("SHAPS_resc" %in% names(coef(mh_fits$best_model)$prolificID)) {
     scale_color_manual(values = c("#ef476f", "#ffd166", "#26547c"),
                        name = "SHAPS Score") +
     labs(x = "Post-tournament Rating",
-         y = "Probability of Acceptance") +
+         y = "Probability of accepting") +
     theme_minimal(base_size = 18) +
     theme(legend.position = "bottom",
           panel.grid.minor = element_blank(),
@@ -764,9 +764,9 @@ if ("SHAPS_resc" %in% names(coef(mh_fits$best_model)$prolificID)) {
     # are ordered Low, Mean, High -- left to right -- exactly like plot2,
     # instead of ggplot's default alphabetical ordering (High, Low, Mean)
     SHAPS_level = factor(c("Low", "Mean", "High"), levels = c("Low", "Mean", "High")),
-    Slope = c(slope_at_shaps(-1.5),  # Low SHAPS
+    Slope = c(slope_at_shaps(-1),  # Low SHAPS
               slope_at_shaps(0),     # Mean SHAPS
-              slope_at_shaps(1.5))   # High SHAPS
+              slope_at_shaps(1))   # High SHAPS
   )
   
   # Create bar plot comparing slopes at different SHAPS levels
@@ -775,8 +775,8 @@ if ("SHAPS_resc" %in% names(coef(mh_fits$best_model)$prolificID)) {
     # colors now line up with SHAPS_level's Low/Mean/High order, matching plot2's
     # scale_color_manual (Low = red, Mean = yellow, High = blue)
     scale_fill_manual(values = c("#ef476f", "#ffd166", "#26547c")) +  
-    labs(x = "SHAPS Score",
-         y = "Effect of Post-tourn. rating on Accepting Effort") +
+    labs(x = "SHAPS score",
+         y = "Effect of post-tourn. rating on accepting effort") +
     theme_minimal(base_size = 18) +
     theme(legend.position = "none",
           panel.grid.minor = element_blank()) +
@@ -786,6 +786,16 @@ if ("SHAPS_resc" %in% names(coef(mh_fits$best_model)$prolificID)) {
   
   # Combine both plots side by side for comprehensive visualization
   comb_intr_plot <- gridExtra::grid.arrange(plot2, plot3, ncol = 2)
+  
+  ggsave(
+      filename = "shaps_interaction_combined.png",  # change path/name as needed
+      plot = comb_intr_plot,
+      dpi = 400,
+      width = 12,
+      height = 8,
+      units = "in",
+      bg = "white"   # avoids a transparent background when pasted into Word
+  )
   
 } else {
   cat("SHAPS not included in best mental health model\n")
